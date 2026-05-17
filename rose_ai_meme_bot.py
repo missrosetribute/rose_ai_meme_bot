@@ -67,7 +67,6 @@ Use `/meme <your prompt>` to create a unique Rose meme!
 • `/meme Rose trading crypto`
 • `/meme Rose at a beach party`
 
-_One meme per user every 3 minutes. Powered by Claude + gpt-image-1._
 """
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
