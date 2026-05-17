@@ -107,6 +107,7 @@ Requirements:
 - Keep her confident expression and retro 1950s pinup style (always)
 - Describe the outfit, pose, props, and setting appropriate for the meme context
 - Describe ONLY what is visually depicted — no story, no relationships, no emotions
+- Leave the BOTTOM 25% of the image uncluttered — this is where the caption text will go
 - Return ONLY the description, nothing else"""
         })
 
@@ -121,7 +122,7 @@ Requirements:
             return description
         except Exception as e:
             print(f"Error generating description: {e}")
-            return "Rose stands confidently with orange wavy hair and a green bow, wearing a vintage outfit in a retro pinup style."
+            return "Rose stands confidently with orange wavy hair and a green bow, wearing a vintage outfit in a retro pinup style, with clear space at the bottom of the image."
 
     def _generate_image_edit(self, rose_description):
         """
@@ -129,33 +130,33 @@ Requirements:
         This anchors generation to the actual character rather than a text description alone.
         """
 
-        # Pick a random Rose reference image as the base for variety
         if not self.rose_references:
-            print("No reference images loaded, falling back to generate mode")
+            print("No reference images loaded, using fallback")
             return self._create_fallback_image(rose_description)
 
         base_ref = random.choice(self.rose_references)
 
-        # gpt-image-1 edit requires a PNG file-like object
-        # Convert to PNG in memory if needed
+        # Convert to RGBA PNG in memory — required by gpt-image-1 edit
         try:
             img = Image.open(BytesIO(base_ref["raw"])).convert("RGBA")
             png_bytes = BytesIO()
             img.save(png_bytes, format="PNG")
             png_bytes.seek(0)
-            png_bytes.name = "rose.png"  # OpenAI SDK checks the filename
+            png_bytes.name = "rose.png"
         except Exception as e:
             print(f"Error preparing base image: {e}")
             return self._create_fallback_image(rose_description)
 
         prompt = (
-            "Keep this character's face, hair color, hair style, and green bow exactly the same. "
-            "Change only her outfit, pose, props, and background to match this scene: "
+            "This is Rose. Preserve her EXACT face, facial features, eye color, "
+            "red/orange wavy hair, green bow, skin tone, and art style with no changes whatsoever. "
+            "She must look identical to the reference. "
+            "Only change her outfit, pose, props, and background to match this scene: "
             f"{rose_description} "
-            "Maintain the retro 1950s pinup cartoon illustration style."
+            "Keep the bottom quarter of the image simple and uncluttered for caption text. "
+            "Maintain the retro 1950s pinup illustration style throughout."
         )
 
-        # Truncate prompt to safe length
         if len(prompt) > 900:
             prompt = prompt[:900]
 
@@ -177,37 +178,74 @@ Requirements:
             return self._create_fallback_image(rose_description)
 
     def compose_meme(self, rose_image, caption):
-        """Compose final meme with Rose image + caption text."""
+        """
+        Compose final meme with Rose image + caption text.
+        - Keeps the image square (1024x1024) to avoid distortion
+        - Places caption in the bottom area with a dark gradient behind it
+        - Font size adapts to caption length
+        """
 
-        if rose_image.size != (900, 600):
-            rose_image = rose_image.resize((900, 600), Image.Resampling.LANCZOS)
-
+        # Keep square — do NOT reshape to 900x600, that causes distortion
+        TARGET_SIZE = 1024
+        rose_image = rose_image.resize((TARGET_SIZE, TARGET_SIZE), Image.Resampling.LANCZOS)
         meme = rose_image.convert('RGB')
         draw = ImageDraw.Draw(meme)
 
+        # Adapt font size based on caption length
+        if len(caption) < 60:
+            font_size = 52
+            wrap_width = 22
+        elif len(caption) < 100:
+            font_size = 44
+            wrap_width = 26
+        else:
+            font_size = 36
+            wrap_width = 32
+
         try:
             font = ImageFont.truetype(
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 48
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size
             )
         except Exception:
             font = ImageFont.load_default()
 
-        wrapper = textwrap.TextWrapper(width=20)
+        # Wrap caption text
+        wrapper = textwrap.TextWrapper(width=wrap_width)
         wrapped = '\n'.join(wrapper.wrap(text=caption))
 
+        # Measure text block
         bbox = draw.textbbox((0, 0), wrapped, font=font)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
 
-        x = (900 - text_w) // 2
-        y = (600 - text_h) // 2
+        padding = 24
+        text_area_height = text_h + padding * 2
 
-        for adj_x in range(-3, 4):
-            for adj_y in range(-3, 4):
+        # Position: horizontally centered, sitting above the bottom edge
+        x = (TARGET_SIZE - text_w) // 2
+        y = TARGET_SIZE - text_area_height - padding + padding  # near bottom
+
+        # Draw a semi-transparent dark gradient band behind the text for readability
+        overlay = Image.new('RGBA', (TARGET_SIZE, TARGET_SIZE), (0, 0, 0, 0))
+        overlay_draw = ImageDraw.Draw(overlay)
+        band_top = y - padding
+        overlay_draw.rectangle(
+            [(0, band_top), (TARGET_SIZE, TARGET_SIZE)],
+            fill=(0, 0, 0, 160)
+        )
+        meme = Image.alpha_composite(meme.convert('RGBA'), overlay).convert('RGB')
+        draw = ImageDraw.Draw(meme)
+
+        # Draw text with thin outline for extra crispness
+        outline_color = (0, 0, 0)
+        text_color = (255, 255, 255)
+
+        for adj_x in [-2, -1, 0, 1, 2]:
+            for adj_y in [-2, -1, 0, 1, 2]:
                 if adj_x != 0 or adj_y != 0:
-                    draw.text((x + adj_x, y + adj_y), wrapped, font=font, fill=(0, 0, 0))
+                    draw.text((x + adj_x, y + adj_y), wrapped, font=font, fill=outline_color)
 
-        draw.text((x, y), wrapped, font=font, fill=(255, 255, 255))
+        draw.text((x, y), wrapped, font=font, fill=text_color)
 
         img_bytes = BytesIO()
         meme.save(img_bytes, format='PNG')
@@ -216,7 +254,7 @@ Requirements:
 
     def _create_fallback_image(self, description):
         """Create a simple fallback image if generation fails."""
-        img = Image.new('RGB', (900, 600), (26, 26, 46))
+        img = Image.new('RGB', (1024, 1024), (26, 26, 46))
         draw = ImageDraw.Draw(img)
 
         try:
@@ -227,7 +265,7 @@ Requirements:
             font = ImageFont.load_default()
 
         text = "Rose Meme\n(Image generation unavailable)"
-        draw.text((50, 250), text, font=font, fill=(255, 200, 220))
+        draw.text((50, 480), text, font=font, fill=(255, 200, 220))
 
         img_bytes = BytesIO()
         img.save(img_bytes, format='PNG')
