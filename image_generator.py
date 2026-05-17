@@ -186,13 +186,12 @@ Requirements:
         - Font size adapts to caption length
         """
 
-        # Keep square — do NOT reshape to 900x600, that causes distortion
+        # Keep portrait — do NOT reshape to 900x600, that causes distortion
         TARGET_SIZE = (852, 1280)
         rose_image = rose_image.resize(TARGET_SIZE, Image.Resampling.LANCZOS)
-        meme = rose_image.convert('RGB')
-        draw = ImageDraw.Draw(meme)
-
-        # Adapt font size based on caption length
+        
+        # Initialize text canvas drawing
+        # We start with default fonts, then look for the preferred font file
         if len(caption) < 60:
             font_size = 52
             wrap_width = 22
@@ -213,62 +212,72 @@ Requirements:
         # Wrap caption text
         wrapper = textwrap.TextWrapper(width=wrap_width)
         wrapped = '\n'.join(wrapper.wrap(text=caption))
+        lines = wrapped.split('\n')
 
-        # Measure text block
-        bbox = draw.textbbox((0, 0), wrapped, font=font)
-        text_w = bbox[2] - bbox[0]
-        text_h = bbox[3] - bbox[1]
+        # Dummy draw for text measurement bounds
+        temp_img = Image.new('RGB', (1, 1))
+        temp_draw = ImageDraw.Draw(temp_img)
+        
+        # Calculate text height to determine the size of the background overlay
+        total_text_height = 0
+        line_heights = []
+        for line in lines:
+            bbox = temp_draw.textbbox((0, 0), line, font=font)
+            line_height = bbox[3] - bbox[1]
+            line_heights.append(line_height)
+            total_text_height += line_height
+            
+        # Add spacing pixels between text lines
+        line_spacing = 8
+        total_text_height += line_spacing * (len(lines) - 1)
 
-        padding = 24
-        text_area_height = text_h + padding * 2
+        # Padding around text block inside the grey canvas element
+        padding_y = 40
+        overlay_height = total_text_height + (padding_y * 2)
+        top_y = TARGET_SIZE[1] - overlay_height
 
-        # Position: horizontally centered, sitting above the bottom edge
-        x = (TARGET_SIZE - text_w) // 2
-        y = TARGET_SIZE - text_area_height - padding + padding  # near bottom
-
-        # Draw a semi-transparent light grey gradient band behind the text for readability
-        overlay = Image.new('RGBA', (TARGET_SIZE, TARGET_SIZE), (0, 0, 0, 0))
+        # Create alpha layer surface for semi-transparent layout elements
+        overlay = Image.new('RGBA', TARGET_SIZE, (0, 0, 0, 0))
         overlay_draw = ImageDraw.Draw(overlay)
-        band_top = y - padding
+        
+        # Draw a soft, light-grey backdrop box (90% white, 75% opacity)
         overlay_draw.rectangle(
-            [(0, band_top), (TARGET_SIZE, TARGET_SIZE)],
-            fill=(0, 0, 0, 160)
+            [0, top_y, TARGET_SIZE[0], TARGET_SIZE[1]],
+            fill=(240, 240, 240, 190)
         )
-        meme = Image.alpha_composite(meme.convert('RGBA'), overlay).convert('RGB')
+        
+        # Composite layers safely together
+        meme = Image.alpha_composite(rose_image.convert('RGBA'), overlay).convert('RGB')
         draw = ImageDraw.Draw(meme)
 
-        # Draw text with thin outline for extra crispness
-        outline_color = (0, 0, 0)
-        text_color = (255, 255, 255)
+        # Centering and final execution step
+        current_y = top_y + padding_y
+        for i, line in enumerate(lines):
+            bbox = draw.textbbox((0, 0), line, font=font)
+            line_width = bbox[2] - bbox[0]
+            
+            # Center text horizontally
+            x = (TARGET_SIZE[0] - line_width) // 2
+            
+            # Draw font using charcoal tint for retro pinup reading contrast
+            draw.text((x, current_y), line, font=font, fill=(30, 30, 30))
+            current_y += line_heights[i] + line_spacing
 
-        for adj_x in [-2, -1, 0, 1, 2]:
-            for adj_y in [-2, -1, 0, 1, 2]:
-                if adj_x != 0 or adj_y != 0:
-                    draw.text((x + adj_x, y + adj_y), wrapped, font=font, fill=outline_color)
-
-        draw.text((x, y), wrapped, font=font, fill=text_color)
-
-        img_bytes = BytesIO()
-        meme.save(img_bytes, format='PNG')
-        img_bytes.seek(0)
-        return img_bytes
+        return meme
 
     def _create_fallback_image(self, description):
-        """Create a simple fallback image if generation fails."""
-        img = Image.new('RGB', (1024, 1024), (26, 26, 46))
-        draw = ImageDraw.Draw(img)
-
+        """Fallback in case image generation APIs throw an error."""
+        fallback = Image.new('RGB', (852, 1280), color=(220, 220, 220))
+        draw = ImageDraw.Draw(fallback)
+        
+        # Wrap long descriptions so they fit safely on the fallback screen
+        wrapper = textwrap.TextWrapper(width=40)
+        wrapped_desc = '\n'.join(wrapper.wrap(text=description))
+        
         try:
-            font = ImageFont.truetype(
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 32
-            )
-        except Exception:
             font = ImageFont.load_default()
-
-        text = "Rose Meme\n(Image generation unavailable)"
-        draw.text((50, 480), text, font=font, fill=(255, 200, 220))
-
-        img_bytes = BytesIO()
-        img.save(img_bytes, format='PNG')
-        img_bytes.seek(0)
-        return img_bytes
+        except Exception:
+            font = None
+            
+        draw.text((50, 400), f"Image Fallback Generation Error\n\nPrompt details:\n{wrapped_desc}", fill=(0, 0, 0), font=font)
+        return fallback
