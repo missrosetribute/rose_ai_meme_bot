@@ -107,7 +107,7 @@ Requirements:
 - Keep her confident expression and retro 1950s pinup style (always)
 - Describe the outfit, pose, props, and setting appropriate for the meme context
 - Describe ONLY what is visually depicted — no story, no relationships, no emotions
-- Leave the BOTTOM 25% of the image uncluttered — this is where the caption text will go
+- Leave the BOTTOM 20% of the image uncluttered — this is where the caption text will go
 - Return ONLY the description, nothing else"""
         })
 
@@ -165,7 +165,7 @@ Requirements:
                 model="gpt-image-1",
                 image=png_bytes,
                 prompt=prompt,
-                size="1024x1024",
+                size="852x1280",
                 n=1,
             )
 
@@ -180,14 +180,14 @@ Requirements:
     def compose_meme(self, rose_image, caption):
         """
         Compose final meme with Rose image + caption text.
-        - Keeps the image square (1024x1024) to avoid distortion
+        - Keeps the image size (852x1280) to avoid distortion
         - Rose's head must fit completely within the image frame
         - Places caption in the bottom area with a light grey gradient behind it
         - Font size adapts to caption length
         """
 
         # Keep square — do NOT reshape to 900x600, that causes distortion
-        TARGET_SIZE = 1024
+        TARGET_SIZE = 852x1280
         rose_image = rose_image.resize((TARGET_SIZE, TARGET_SIZE), Image.Resampling.LANCZOS)
         meme = rose_image.convert('RGB')
         draw = ImageDraw.Draw(meme)
