@@ -37,19 +37,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 Send me any prompt, and I'll create a UNIQUE meme with a dynamically generated Rose!
 
-**How it works:**
-1. You send a prompt (e.g., "Rose trading crypto")
-2. Claude generates a funny caption + Rose description
-3. DALL-E 3 creates a unique Rose image
-4. You get a brand new meme!
-
-**Every Rose is different:**
-- Same character (orange hair, green bow, confident)
-- Different outfit based on context
-- Different pose based on situation
-- Different setting/props
-- Completely unique each time!
-
 **Try these prompts:**
 • "Rose at the gym"
 • "Rose as a detective"
@@ -57,7 +44,6 @@ Send me any prompt, and I'll create a UNIQUE meme with a dynamically generated R
 • "Rose trading $ROSE"
 • Any situation you imagine!
 
-*Powered by Claude + DALL-E 3*
 """
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
@@ -67,7 +53,7 @@ async def generate_meme(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     
     try:
         await update.message.chat.send_action("upload_photo")
-        await update.message.reply_text("✨ Creating your unique meme...\n(Generating caption and Rose image)")
+        await update.message.reply_text("✨ Creating your unique meme 🎨")
         
         # Step 1: Generate meme caption from prompt
         caption = generate_caption(user_prompt)
@@ -128,7 +114,7 @@ Requirements:
 Return ONLY the caption text. Nothing else."""
 
     message = anthropic_client.messages.create(
-        model="claude-opus-4-20250514",
+        model="claude-sonnet-4-5",
         max_tokens=200,
         system=system_prompt,
         messages=[
@@ -159,13 +145,6 @@ Each meme has:
 ✨ Funny AI caption
 ✨ Contextual outfit/pose
 ✨ Perfect for sharing
-
-**Examples:**
-• "Rose as a CEO" → Rose in suit at desk
-• "Rose at beach" → Rose in beach outfit
-• "Rose playing guitar" → Rose with instrument
-• "Rose cooking" → Rose in kitchen
-• Any scenario you can imagine!
 
 The magic: Rose always looks like Rose, but she's created fresh each time based on YOUR prompt!
 """
