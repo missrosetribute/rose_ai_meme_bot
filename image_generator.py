@@ -1,11 +1,13 @@
 """
 Dynamic Image Generator - Creates unique Rose images using Claude + gpt-image-1
-Claude generates descriptions, gpt-image-1 creates the images
+Claude sees all Rose reference images and generates a description.
+gpt-image-1 edit mode uses a real Rose image as the base, ensuring character consistency.
 """
 
 import anthropic
 import openai
 import base64
+import random
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
 import textwrap
@@ -49,8 +51,13 @@ class RoseImageGenerator:
                 with open(filename, "rb") as f:
                     raw = f.read()
                 media_type = detect_media_type(raw)
-                data = base64.standard_b64encode(raw).decode("utf-8")
-                references.append((filename, media_type, data))
+                b64_data = base64.standard_b64encode(raw).decode("utf-8")
+                references.append({
+                    "filename": filename,
+                    "media_type": media_type,
+                    "b64_data": b64_data,
+                    "raw": raw,
+                })
                 print(f"Loaded {filename} as {media_type}")
             except Exception as e:
                 print(f"Could not load reference image {filename}: {e}")
@@ -60,17 +67,17 @@ class RoseImageGenerator:
         """
         Generate a unique Rose image based on the meme prompt.
         Flow:
-          1. Claude analyzes prompt + sees Rose references
-          2. Claude creates short visual description
-          3. gpt-image-1 generates image from description
-          4. Return the image
+          1. Claude sees all Rose reference images and writes a visual description
+          2. gpt-image-1 edit mode takes a random Rose reference as the base image
+             and transforms it according to the description — preserving her character
+          3. Return the image
         """
         visual_description = self._generate_rose_description(meme_prompt, meme_caption)
-        rose_image = self._generate_image(visual_description)
+        rose_image = self._generate_image_edit(visual_description)
         return rose_image
 
     def _generate_rose_description(self, meme_prompt, meme_caption):
-        """Use Claude to generate a short Rose visual description."""
+        """Use Claude (with all Rose reference images) to generate a visual description."""
 
         content = [
             {
@@ -79,26 +86,26 @@ class RoseImageGenerator:
             }
         ]
 
-        for filename, media_type, base64_data in self.rose_references:
+        for ref in self.rose_references:
             content.append({
                 "type": "image",
                 "source": {
                     "type": "base64",
-                    "media_type": media_type,  # Detected from actual bytes, not filename
-                    "data": base64_data
+                    "media_type": ref["media_type"],
+                    "data": ref["b64_data"],
                 }
             })
 
         content.append({
             "type": "text",
-            "text": f"""Based on these reference images of Rose, write a 1-2 sentence visual description for an image generator.
+            "text": f"""Based on these reference images of Rose, write a 1-2 sentence visual description for an image editor.
 
 Meme context: "{meme_prompt}"
 
 Requirements:
-- Orange/red wavy hair with green bow (always keep)
-- Confident expression, retro 1950s pinup style (always keep)
-- Adapt outfit, pose, props, and setting to match the meme context
+- Keep her red wavy hair and green hair accessory (always)
+- Keep her confident expression and retro 1950s pinup style (always)
+- Describe the outfit, pose, props, and setting appropriate for the meme context
 - Describe ONLY what is visually depicted — no story, no relationships, no emotions
 - Return ONLY the description, nothing else"""
         })
@@ -116,33 +123,57 @@ Requirements:
             print(f"Error generating description: {e}")
             return "Rose stands confidently with orange wavy hair and a green bow, wearing a vintage outfit in a retro pinup style."
 
-    def _generate_image(self, rose_description):
-        """Generate image using gpt-image-1 from Rose description."""
+    def _generate_image_edit(self, rose_description):
+        """
+        Use gpt-image-1 edit mode with a real Rose image as the base.
+        This anchors generation to the actual character rather than a text description alone.
+        """
 
-        base = (
-            "Cartoon illustration of a confident retro pinup woman with orange wavy hair "
-            "and a green bow. "
+        # Pick a random Rose reference image as the base for variety
+        if not self.rose_references:
+            print("No reference images loaded, falling back to generate mode")
+            return self._create_fallback_image(rose_description)
+
+        base_ref = random.choice(self.rose_references)
+
+        # gpt-image-1 edit requires a PNG file-like object
+        # Convert to PNG in memory if needed
+        try:
+            img = Image.open(BytesIO(base_ref["raw"])).convert("RGBA")
+            png_bytes = BytesIO()
+            img.save(png_bytes, format="PNG")
+            png_bytes.seek(0)
+            png_bytes.name = "rose.png"  # OpenAI SDK checks the filename
+        except Exception as e:
+            print(f"Error preparing base image: {e}")
+            return self._create_fallback_image(rose_description)
+
+        prompt = (
+            "Keep this character's face, hair color, hair style, and green bow exactly the same. "
+            "Change only her outfit, pose, props, and background to match this scene: "
+            f"{rose_description} "
+            "Maintain the retro 1950s pinup cartoon illustration style."
         )
-        style = " Vibrant meme-style art, bold outlines, colorful."
 
-        max_desc_len = 900 - len(base) - len(style)
-        safe_description = rose_description[:max_desc_len]
-        prompt = base + safe_description + style
+        # Truncate prompt to safe length
+        if len(prompt) > 900:
+            prompt = prompt[:900]
 
         try:
-            response = self.openai_client.images.generate(
+            response = self.openai_client.images.edit(
                 model="gpt-image-1",
+                image=png_bytes,
                 prompt=prompt,
                 size="1024x1024",
-                n=1
+                n=1,
             )
 
-            # gpt-image-1 returns base64, not a URL
+            # gpt-image-1 returns base64
             image_data = base64.b64decode(response.data[0].b64_json)
             return Image.open(BytesIO(image_data))
 
         except Exception as e:
-            print(f"Error generating image with gpt-image-1: {e}")
+            print(f"Error editing image with gpt-image-1: {e}")
             return self._create_fallback_image(rose_description)
 
     def compose_meme(self, rose_image, caption):
