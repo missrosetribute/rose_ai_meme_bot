@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: rose-ai-meme-bot
+    runtime: python
+    pythonVersion: 3.11
+    startCommand: python rose_ai_meme_bot.py
+    envVars:
+      - key: TELEGRAM_TOKEN
+        scope: run
+      - key: ANTHROPIC_API_KEY
+        scope: run
