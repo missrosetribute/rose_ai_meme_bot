@@ -187,8 +187,8 @@ Requirements:
         """
 
         # Keep square — do NOT reshape to 900x600, that causes distortion
-        TARGET_SIZE = 852x1280
-        rose_image = rose_image.resize((TARGET_SIZE, TARGET_SIZE), Image.Resampling.LANCZOS)
+        TARGET_SIZE = (852, 1280)
+        rose_image = rose_image.resize(TARGET_SIZE, Image.Resampling.LANCZOS)
         meme = rose_image.convert('RGB')
         draw = ImageDraw.Draw(meme)
 
