@@ -1,25 +1,36 @@
 """
-Dynamic Image Generator - Creates unique Rose images using Claude + DALL-E 3
-Claude generates descriptions, DALL-E 3 creates the images
+Dynamic Image Generator - Creates unique Rose images using Claude + gpt-image-1
+Claude generates descriptions, gpt-image-1 creates the images
 """
 
 import anthropic
 import openai
-import requests
+import base64
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
-import base64
 import textwrap
 import os
 
-# Map filenames to their correct media types
-ROSE_REFERENCES = [
-    ("rose_avatar.png", "image/png"),
-    ("rose_avatar_alt.png", "image/png"),
-    ("rose_avatar_alt2.png", "image/png"),
-    ("rose_avatar_alt3.jpg", "image/jpeg"),  # Fixed: was .png
-    ("rose_avatar_alt4.jpg", "image/jpeg"),  # Fixed: was .png
+ROSE_REFERENCE_FILES = [
+    "rose_avatar.png",
+    "rose_avatar_alt.png",
+    "rose_avatar_alt2.png",
+    "rose_avatar_alt3.jpg",
+    "rose_avatar_alt4.jpg",
 ]
+
+
+def detect_media_type(data: bytes) -> str:
+    """Detect image media type from magic bytes instead of trusting the file extension."""
+    if data[:3] == b'\xff\xd8\xff':
+        return "image/jpeg"
+    if data[:8] == b'\x89PNG\r\n\x1a\n':
+        return "image/png"
+    if data[:6] in (b'GIF87a', b'GIF89a'):
+        return "image/gif"
+    if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+        return "image/webp"
+    return "image/jpeg"  # safe fallback
 
 
 class RoseImageGenerator:
@@ -31,32 +42,35 @@ class RoseImageGenerator:
         self.rose_references = self._load_rose_references()
 
     def _load_rose_references(self):
-        """Load Rose reference images for Claude to understand her appearance"""
+        """Load Rose reference images, detecting actual media type from file bytes."""
         references = []
-        for filename, media_type in ROSE_REFERENCES:
+        for filename in ROSE_REFERENCE_FILES:
             try:
                 with open(filename, "rb") as f:
-                    data = base64.standard_b64encode(f.read()).decode("utf-8")
-                    references.append((filename, media_type, data))
+                    raw = f.read()
+                media_type = detect_media_type(raw)
+                data = base64.standard_b64encode(raw).decode("utf-8")
+                references.append((filename, media_type, data))
+                print(f"Loaded {filename} as {media_type}")
             except Exception as e:
                 print(f"Could not load reference image {filename}: {e}")
         return references
 
     def generate_rose_image(self, meme_prompt, meme_caption):
         """
-        Generate a unique Rose image based on the meme prompt
+        Generate a unique Rose image based on the meme prompt.
         Flow:
-        1. Claude analyzes prompt + sees Rose references
-        2. Claude creates detailed visual description
-        3. DALL-E 3 generates image from description
-        4. Return the image
+          1. Claude analyzes prompt + sees Rose references
+          2. Claude creates short visual description
+          3. gpt-image-1 generates image from description
+          4. Return the image
         """
         visual_description = self._generate_rose_description(meme_prompt, meme_caption)
-        rose_image = self._generate_image_dalle3(visual_description)
+        rose_image = self._generate_image(visual_description)
         return rose_image
 
     def _generate_rose_description(self, meme_prompt, meme_caption):
-        """Use Claude to generate detailed Rose visual description"""
+        """Use Claude to generate a short Rose visual description."""
 
         content = [
             {
@@ -65,98 +79,74 @@ class RoseImageGenerator:
             }
         ]
 
-        # Add Rose reference images with correct media types
         for filename, media_type, base64_data in self.rose_references:
             content.append({
                 "type": "image",
                 "source": {
                     "type": "base64",
-                    "media_type": media_type,  # Fixed: now uses correct type per file
+                    "media_type": media_type,  # Detected from actual bytes, not filename
                     "data": base64_data
                 }
             })
 
         content.append({
             "type": "text",
-            "text": f"""Based on these reference images of Rose, create a concise visual description for an image generation AI.
+            "text": f"""Based on these reference images of Rose, write a 1-2 sentence visual description for an image generator.
 
 Meme context: "{meme_prompt}"
-Meme caption: "{meme_caption}"
 
-Generate a description that:
-1. MAINTAINS Rose's core identity:
-   - Orange/red wavy hair with green bow (required)
-   - Confident, sassy expression (required)
-   - Retro 1950s pinup aesthetic (required)
-
-2. ADAPTS to the meme context:
-   - Appropriate outfit/clothing
-   - Relevant pose and body language
-   - Fitting accessories/props
-   - Suitable background/setting
-
-IMPORTANT:
-- Keep the description to 2 sentences maximum
-- Focus on visual elements only (no drama, no relationships, no narrative)
-- Describe what Rose looks like and where she is, nothing else
-- Return ONLY the description, no preamble"""
+Requirements:
+- Orange/red wavy hair with green bow (always keep)
+- Confident expression, retro 1950s pinup style (always keep)
+- Adapt outfit, pose, props, and setting to match the meme context
+- Describe ONLY what is visually depicted — no story, no relationships, no emotions
+- Return ONLY the description, nothing else"""
         })
 
         try:
             message = self.claude_client.messages.create(
-                model="claude-sonnet-4-5",  # Fixed: updated from deprecated claude-opus-4-20250514
-                max_tokens=200,
-                messages=[
-                    {"role": "user", "content": content}
-                ]
+                model="claude-sonnet-4-5",
+                max_tokens=150,
+                messages=[{"role": "user", "content": content}]
             )
             description = message.content[0].text.strip()
+            print(f"Generated description: {description}")
             return description
         except Exception as e:
             print(f"Error generating description: {e}")
-            return "Rose stands confidently with orange wavy hair and a green bow, wearing a vintage outfit, retro pinup style."
+            return "Rose stands confidently with orange wavy hair and a green bow, wearing a vintage outfit in a retro pinup style."
 
-    def _generate_image_dalle3(self, rose_description):
-        """Generate image using DALL-E 3 from Rose description"""
+    def _generate_image(self, rose_description):
+        """Generate image using gpt-image-1 from Rose description."""
 
-        # Keep prompt short and visual-only to avoid content policy rejections.
-        # DALL-E 3 is sensitive to long or narrative-heavy prompts.
         base = (
             "Cartoon illustration of a confident retro pinup woman with orange wavy hair "
             "and a green bow. "
         )
-        style = " Vibrant meme-style art, bold outlines, colorful, high quality."
+        style = " Vibrant meme-style art, bold outlines, colorful."
 
-        # Truncate description if needed so total prompt stays well under 1000 chars
         max_desc_len = 900 - len(base) - len(style)
         safe_description = rose_description[:max_desc_len]
-
         prompt = base + safe_description + style
 
         try:
             response = self.openai_client.images.generate(
-                model="dall-e-3",
+                model="gpt-image-1",
                 prompt=prompt,
                 size="1024x1024",
-                quality="standard",
                 n=1
             )
 
-            image_url = response.data[0].url
-            img_response = requests.get(image_url, timeout=30)
-
-            if img_response.status_code == 200:
-                return Image.open(BytesIO(img_response.content))
-            else:
-                print(f"Failed to download image: HTTP {img_response.status_code}")
-                return self._create_fallback_image(rose_description)
+            # gpt-image-1 returns base64, not a URL
+            image_data = base64.b64decode(response.data[0].b64_json)
+            return Image.open(BytesIO(image_data))
 
         except Exception as e:
-            print(f"Error generating image with DALL-E 3: {e}")
+            print(f"Error generating image with gpt-image-1: {e}")
             return self._create_fallback_image(rose_description)
 
     def compose_meme(self, rose_image, caption):
-        """Compose final meme with Rose image + caption text"""
+        """Compose final meme with Rose image + caption text."""
 
         if rose_image.size != (900, 600):
             rose_image = rose_image.resize((900, 600), Image.Resampling.LANCZOS)
@@ -175,21 +165,18 @@ IMPORTANT:
         wrapped = '\n'.join(wrapper.wrap(text=caption))
 
         bbox = draw.textbbox((0, 0), wrapped, font=font)
-        text_h = bbox[3] - bbox[1]
         text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
 
         x = (900 - text_w) // 2
         y = (600 - text_h) // 2
 
-        outline_color = (0, 0, 0)
-        text_color = (255, 255, 255)
-
         for adj_x in range(-3, 4):
             for adj_y in range(-3, 4):
                 if adj_x != 0 or adj_y != 0:
-                    draw.text((x + adj_x, y + adj_y), wrapped, font=font, fill=outline_color)
+                    draw.text((x + adj_x, y + adj_y), wrapped, font=font, fill=(0, 0, 0))
 
-        draw.text((x, y), wrapped, font=font, fill=text_color)
+        draw.text((x, y), wrapped, font=font, fill=(255, 255, 255))
 
         img_bytes = BytesIO()
         meme.save(img_bytes, format='PNG')
@@ -197,7 +184,7 @@ IMPORTANT:
         return img_bytes
 
     def _create_fallback_image(self, description):
-        """Create fallback meme if image generation fails"""
+        """Create a simple fallback image if generation fails."""
         img = Image.new('RGB', (900, 600), (26, 26, 46))
         draw = ImageDraw.Draw(img)
 
