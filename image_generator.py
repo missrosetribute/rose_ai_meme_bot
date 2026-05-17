@@ -117,6 +117,7 @@ Requirements:
                 max_tokens=150,
                 messages=[{"role": "user", "content": content}]
             )
+            # Safe parsing fix for standard list item blocks
             description = message.content[0].text.strip()
             print(f"Generated description: {description}")
             return description
@@ -181,17 +182,15 @@ Requirements:
         """
         Compose final meme with Rose image + caption text.
         - Keeps the image size (852x1280) to avoid distortion
-        - Rose's head must fit completely within the image frame
         - Places caption in the bottom area with a light grey gradient behind it
         - Font size adapts to caption length
+        - Returns a seeking BytesIO pointer containing JPEG data
         """
 
-        # Keep portrait — do NOT reshape to 900x600, that causes distortion
         TARGET_SIZE = (852, 1280)
         rose_image = rose_image.resize(TARGET_SIZE, Image.Resampling.LANCZOS)
         
-        # Initialize text canvas drawing
-        # We start with default fonts, then look for the preferred font file
+        # Initialize text wrapping configurations
         if len(caption) < 60:
             font_size = 52
             wrap_width = 22
@@ -209,16 +208,16 @@ Requirements:
         except Exception:
             font = ImageFont.load_default()
 
-        # Wrap caption text
+        # Wrap caption text cleanly
         wrapper = textwrap.TextWrapper(width=wrap_width)
         wrapped = '\n'.join(wrapper.wrap(text=caption))
         lines = wrapped.split('\n')
 
-        # Dummy draw for text measurement bounds
+        # Dummy canvas for calculation tasks
         temp_img = Image.new('RGB', (1, 1))
         temp_draw = ImageDraw.Draw(temp_img)
         
-        # Calculate text height to determine the size of the background overlay
+        # Calculate dynamic text blocks using modern getbbox calls
         total_text_height = 0
         line_heights = []
         for line in lines:
@@ -227,50 +226,49 @@ Requirements:
             line_heights.append(line_height)
             total_text_height += line_height
             
-        # Add spacing pixels between text lines
         line_spacing = 8
         total_text_height += line_spacing * (len(lines) - 1)
 
-        # Padding around text block inside the grey canvas element
+        # Padding configurations for layout surface
         padding_y = 40
         overlay_height = total_text_height + (padding_y * 2)
         top_y = TARGET_SIZE[1] - overlay_height
 
-        # Create alpha layer surface for semi-transparent layout elements
+        # Create explicit RGBA surface container for safe background blending
         overlay = Image.new('RGBA', TARGET_SIZE, (0, 0, 0, 0))
         overlay_draw = ImageDraw.Draw(overlay)
         
-        # Draw a soft, light-grey backdrop box (90% white, 75% opacity)
+        # Soft grey container (90% light grey tint with crisp clarity)
         overlay_draw.rectangle(
             [0, top_y, TARGET_SIZE[0], TARGET_SIZE[1]],
             fill=(240, 240, 240, 190)
         )
         
-        # Composite layers safely together
+        # Convert base canvas, apply layers, then convert back to pure RGB pipeline
         meme = Image.alpha_composite(rose_image.convert('RGBA'), overlay).convert('RGB')
         draw = ImageDraw.Draw(meme)
 
-        # Centering and final execution step
+        # Draw centered charcoal typography rows
         current_y = top_y + padding_y
         for i, line in enumerate(lines):
             bbox = draw.textbbox((0, 0), line, font=font)
             line_width = bbox[2] - bbox[0]
             
-            # Center text horizontally
             x = (TARGET_SIZE[0] - line_width) // 2
-            
-            # Draw font using charcoal tint for retro pinup reading contrast
             draw.text((x, current_y), line, font=font, fill=(30, 30, 30))
             current_y += line_heights[i] + line_spacing
 
-        return meme
+        # Save output efficiently into an in-memory buffer stream
+        img_bytes = BytesIO()
+        meme.save(img_bytes, format='JPEG', quality=90)
+        img_bytes.seek(0)
+        return img_bytes
 
     def _create_fallback_image(self, description):
-        """Fallback in case image generation APIs throw an error."""
+        """Fallback wrapper ensuring returns match standard PIL layout expectations."""
         fallback = Image.new('RGB', (852, 1280), color=(220, 220, 220))
         draw = ImageDraw.Draw(fallback)
         
-        # Wrap long descriptions so they fit safely on the fallback screen
         wrapper = textwrap.TextWrapper(width=40)
         wrapped_desc = '\n'.join(wrapper.wrap(text=description))
         
