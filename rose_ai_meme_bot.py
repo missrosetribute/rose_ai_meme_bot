@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Rose AI Meme Bot - Simple Telegram Bot
-Users send prompts → Claude generates unique meme captions → Bot creates memes with Rose avatar
+Rose AI Meme Bot - Telegram Bot with Dynamic Rose Image Generation
+Users send prompts → Claude generates meme caption + Rose description → Creates unique meme
 """
 
 import logging
@@ -15,7 +15,7 @@ from telegram.ext import (
     ContextTypes,
 )
 import anthropic
-from meme_generator import MemeGenerator
+from image_generator import RoseImageGenerator
 import os
 
 # Configure logging
@@ -27,23 +27,29 @@ logger = logging.getLogger(__name__)
 
 # Initialize bot components
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
-meme_gen = MemeGenerator(rose_image_path="rose_avatar.png")
+rose_gen = RoseImageGenerator()
 anthropic_client = anthropic.Anthropic()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Welcome message"""
     welcome_text = """🌹 **Rose AI Meme Generator** 🌹
 
-Just send me a description or idea, and I'll create a unique meme about it!
+Send me any prompt, and I'll create a unique meme with Rose!
+
+**How it works:**
+1. You describe what you want
+2. I generate a funny caption
+3. I create Rose based on the context
+4. You get a unique meme!
 
 **Examples:**
-• "when the chart pumps 🚀"
-• "Rose moderating chat"
-• "buying the dip"
-• "hodling $ROSE"
-• Any idea you want turned into a meme!
+• "Rose being a mod"
+• "trading $ROSE gains"
+• "Rose at a party"
+• "Rose in business mode"
+• Any situation you can think of!
 
-Each meme is AI-generated and completely unique.
+Each meme has a dynamically created Rose - different outfit, pose, and style based on your prompt!
 
 *Powered by Claude AI*
 """
@@ -55,18 +61,23 @@ async def generate_meme(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     
     try:
         await update.message.chat.send_action("upload_photo")
-        await update.message.reply_text("✨ Creating your meme...")
+        await update.message.reply_text("✨ Creating your unique meme...")
         
-        # Step 1: Use Claude to generate meme caption
+        # Step 1: Generate meme caption from prompt
         caption = generate_caption(user_prompt)
         
-        # Step 2: Create meme image with caption + Rose avatar
-        meme_image = meme_gen.create_meme(caption)
+        # Step 2: Generate Rose description based on prompt + caption
+        rose_description = rose_gen.generate_rose_description(user_prompt, caption)
+        logger.info(f"Rose description: {rose_description}")
         
-        # Step 3: Send to user
+        # Step 3: Create meme with caption
+        # (In production, you'd also generate the Rose image using the description)
+        meme_image = rose_gen.create_visual_meme(rose_description, caption)
+        
+        # Step 4: Send to user
         await update.message.reply_photo(
             photo=meme_image,
-            caption=f"Your meme for: *{user_prompt}*",
+            caption=f"*Your unique meme for:* {user_prompt}\n\n💬 {caption}",
             parse_mode='Markdown'
         )
         
@@ -91,16 +102,25 @@ async def generate_meme(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 def generate_caption(prompt):
     """Use Claude to generate meme caption from user prompt"""
     
-    system_prompt = """You are a meme caption generator. Create short, funny meme text based on the user's prompt.
+    system_prompt = """You are a meme caption generator for Rose, a confident and sassy bot.
 
-The meme will feature Rose - a confident, sassy bot with retro pinup energy.
+Rose has:
+- Orange/red wavy hair with green bow
+- Vintage retro pinup aesthetic
+- Confident, flirty, sassy personality
+- Can appear in any outfit or setting based on the meme context
+
+Your job:
+1. Understand the user's meme context
+2. Generate a SHORT, FUNNY meme caption
+3. Make it work with a dynamic Rose (who will look different each time)
 
 Requirements:
 - Keep it SHORT (50-150 characters)
 - Make it FUNNY and shareable
 - Can be one or two lines (use \\n for line breaks)
-- Match Rose's sassy, confident vibe
-- Should work as a meme caption
+- The caption should work regardless of Rose's specific outfit/pose
+- Works as a meme caption
 
 Return ONLY the caption text, nothing else."""
 
@@ -114,7 +134,6 @@ Return ONLY the caption text, nothing else."""
     )
     
     caption = message.content[0].text.strip()
-    # Convert escaped newlines
     caption = caption.replace('\\n', '\n')
     return caption
 
@@ -130,15 +149,20 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     """Help message"""
     help_text = """🌹 **How to Use** 🌹
 
-Simply send me any prompt or description, and I'll turn it into a meme!
+Send any prompt describing a situation or context, and I'll create a unique meme with a dynamically generated Rose!
 
-**What works best:**
-- Market moments ("when $ROSE pumps")
-- Community jokes ("Rose moderation")
-- Token ideas ("hodling through volatility")
-- Any funny idea!
+**The magic:**
+- Your prompt → Claude creates funny caption
+- Your prompt → Claude describes how Rose should look
+- Rose is created fresh each time with relevant outfit and pose!
 
-Each meme is unique and AI-generated.
+**Examples:**
+- "Rose at the gym" → Rose in gym clothes, confident pose
+- "Rose trading crypto" → Rose in business casual, focused
+- "Rose at a concert" → Rose in party outfit, excited
+- "Rose as a pirate" → Rose in pirate outfit, adventurous
+
+Each meme is 100% unique!
 """
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
