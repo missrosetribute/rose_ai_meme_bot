@@ -103,7 +103,7 @@ class RoseImageGenerator:
 Meme context: "{meme_prompt}"
 
 Requirements:
-- Keep her red wavy hair and green hair accessory (always)
+- Keep her orange/red wavy hair and green bow (always)
 - Keep her confident expression and retro 1950s pinup style (always)
 - Describe the outfit, pose, props, and setting appropriate for the meme context
 - Describe ONLY what is visually depicted — no story, no relationships, no emotions
