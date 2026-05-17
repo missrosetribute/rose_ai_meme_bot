@@ -22,7 +22,7 @@ class RoseImageGenerator:
     def _load_rose_references(self):
         """Load Rose reference images for Claude to understand her appearance"""
         references = {}
-        for filename in ["rose_avatar.png", "rose_avatar_alt.png"]:
+        for filename in ["rose_avatar.png", "rose_avatar_alt.png", "rose_avatar_alt2.png", "rose_avatar_alt3.png", "rose_avatar_alt4.png"]:
             try:
                 with open(filename, "rb") as f:
                     references[filename] = base64.standard_b64encode(f.read()).decode("utf-8")
