@@ -59,7 +59,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Welcome message"""
     welcome_text = """🌹 *Rose AI Meme Generator* 🌹
 
-Use `/meme <your prompt>` to create a unique Rose meme!
+Use `/meme <your prompt>` to create a unique Miss Rose meme!
 
 *Examples:*
 • `/meme Rose at the gym`
@@ -165,10 +165,10 @@ async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 def generate_caption(prompt: str) -> str:
     """Use Claude to generate a meme caption from user prompt."""
-    system_prompt = """You are a meme caption generator for Rose, a confident and sassy bot.
+    system_prompt = """You are a meme caption generator for Rose, a confident and sassy female.
 
 Rose characteristics:
-- Orange/red wavy hair with green bow
+- Orange/red wavy hair with green hair accessory
 - Vintage retro pinup aesthetic
 - Confident, flirty, sassy personality
 - Can be in any situation/outfit
@@ -206,7 +206,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if query.data.startswith("regen:"):
         prompt = query.data.split("regen:", 1)[1]
         await query.edit_message_text(
-            f"Send `/meme {prompt}` to generate a new one! 🎨",
+            f"Send another prompt to generate a new one! 🎨",
             parse_mode='Markdown'
         )
     elif query.data == "good":
@@ -225,11 +225,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 • `/meme Rose playing guitar` → Rose with an instrument
 • `/meme Rose cooking` → Rose in the kitchen
 
-*Rules:*
-• One meme every 3 minutes per user
-• Multiple users can generate at the same time
-
-_Powered by Claude + gpt-image-1_
 """
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
