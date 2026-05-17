@@ -14,7 +14,7 @@ import os
 ROSE_REFERENCE_FILES = [
     "rose_avatar.png",
     "rose_avatar_alt.png",
-    "rose_avatar_alt2.png",
+    "rose_avatar_alt2.jpg",
     "rose_avatar_alt3.jpg",
     "rose_avatar_alt4.jpg",
 ]
