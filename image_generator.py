@@ -201,7 +201,7 @@ Example: "Rose wears a business suit and confidently stands at a desk with chart
                 model="gpt-image-1",
                 image=png_bytes,
                 prompt=prompt,
-                size="852x1280",
+                size="1024x1536",
                 n=1,
             )
             
