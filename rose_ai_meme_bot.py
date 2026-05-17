@@ -136,7 +136,7 @@ async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     user_cooldowns[user_id] = time.time()
 
     status_msg = await update.message.reply_text(
-        f"✨ Generating your meme for: _{prompt}_...",
+        f"✨ Generating your meme, don't run away!",
         parse_mode='Markdown'
     )
 
@@ -157,7 +157,7 @@ async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         await update.message.reply_photo(
             photo=meme_image,
-            caption=f"🌹 *{user.first_name}'s Meme* 🌹\n\n_{prompt}_\n\n💬 {caption}",
+            caption=f"🌹 *{user.first_name}'s Meme* 🌹\n\n💬 {caption}",
             parse_mode='Markdown'
         )
 
