@@ -181,7 +181,8 @@ Requirements:
         """
         Compose final meme with Rose image + caption text.
         - Keeps the image square (1024x1024) to avoid distortion
-        - Places caption in the bottom area with a dark gradient behind it
+        - Rose's head must fit completely within the image frame
+        - Places caption in the bottom area with a light grey gradient behind it
         - Font size adapts to caption length
         """
 
@@ -225,7 +226,7 @@ Requirements:
         x = (TARGET_SIZE - text_w) // 2
         y = TARGET_SIZE - text_area_height - padding + padding  # near bottom
 
-        # Draw a semi-transparent dark gradient band behind the text for readability
+        # Draw a semi-transparent light grey gradient band behind the text for readability
         overlay = Image.new('RGBA', (TARGET_SIZE, TARGET_SIZE), (0, 0, 0, 0))
         overlay_draw = ImageDraw.Draw(overlay)
         band_top = y - padding
