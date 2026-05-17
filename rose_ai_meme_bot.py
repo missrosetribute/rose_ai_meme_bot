@@ -5,11 +5,15 @@ Rose AI Meme Bot - Group Chat Version
 - 180 second per-user cooldown
 - Fully async so multiple users can generate simultaneously
 - Status messages are deleted after image is sent
+- Binds to port 10000 to satisfy Render's web service port scan
 """
 
 import logging
 import asyncio
 import time
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from concurrent.futures import ThreadPoolExecutor
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -34,13 +38,40 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 rose_gen = RoseImageGenerator()
 anthropic_client = anthropic.Anthropic()
 
+# Dedicated thread pool for image generation tasks
+executor = ThreadPoolExecutor(max_workers=4)
+
 # Per-user cooldown tracking: {user_id: last_used_timestamp}
 COOLDOWN_SECONDS = 180
+
+# Generation timeout in seconds
+GENERATION_TIMEOUT = 120
+
 user_cooldowns: dict[int, float] = {}
 
 
+# ── Render health check server ─────────────────────────────────────────────────
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+    def log_message(self, format, *args):
+        pass  # Suppress HTTP access logs
+
+
+def start_health_server():
+    port = int(os.getenv('PORT', 10000))
+    server = HTTPServer(('0.0.0.0', port), HealthHandler)
+    logger.info(f"Health check server listening on port {port}")
+    server.serve_forever()
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
 def get_cooldown_remaining(user_id: int) -> int:
-    """Returns seconds remaining on cooldown, or 0 if ready."""
     last_used = user_cooldowns.get(user_id, 0)
     elapsed = time.time() - last_used
     remaining = COOLDOWN_SECONDS - elapsed
@@ -48,18 +79,23 @@ def get_cooldown_remaining(user_id: int) -> int:
 
 
 async def delete_message_quietly(message) -> None:
-    """Delete a message, ignoring errors if it's already gone."""
     try:
         await message.delete()
     except BadRequest:
         pass
 
 
+async def run_in_executor(func, *args):
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(executor, func, *args)
+
+
+# ── Command handlers ───────────────────────────────────────────────────────────
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Welcome message"""
     welcome_text = """🌹 *Rose AI Meme Generator* 🌹
 
-Use `/meme <your prompt>` to create a unique Miss Rose meme!
+Use `/meme <your prompt>` to create a unique Rose meme!
 
 *Examples:*
 • `/meme Rose at the gym`
@@ -72,12 +108,6 @@ Use `/meme <your prompt>` to create a unique Miss Rose meme!
 
 
 async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    Handle /meme <prompt> command.
-    - Checks cooldown before doing anything
-    - Sends a status message, generates async, then deletes the status message
-    - Multiple users can generate simultaneously
-    """
     user = update.effective_user
     user_id = user.id
 
@@ -87,7 +117,6 @@ async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         cooldown_msg = await update.message.reply_text(
             f"⏳ {user.first_name}, please wait {remaining}s before generating another meme."
         )
-        # Auto-delete the cooldown notice after 5 seconds
         await asyncio.sleep(5)
         await delete_message_quietly(cooldown_msg)
         return
@@ -106,39 +135,32 @@ async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     # Mark cooldown immediately so user can't spam while generating
     user_cooldowns[user_id] = time.time()
 
-    # Send status message (will be deleted after image is sent)
     status_msg = await update.message.reply_text(
         f"✨ Generating your meme for: _{prompt}_...",
         parse_mode='Markdown'
     )
 
     try:
-        # Run blocking generation in a thread so other users aren't blocked
-        loop = asyncio.get_event_loop()
+        async def generate():
+            caption = await run_in_executor(generate_caption, prompt)
+            logger.info(f"[{user.first_name}] Caption: {caption}")
 
-        caption = await loop.run_in_executor(None, generate_caption, prompt)
-        logger.info(f"[{user.first_name}] Caption: {caption}")
+            rose_image = await run_in_executor(rose_gen.generate_rose_image, prompt, caption)
+            logger.info(f"[{user.first_name}] Rose image generated")
 
-        rose_image = await loop.run_in_executor(
-            None, rose_gen.generate_rose_image, prompt, caption
-        )
-        logger.info(f"[{user.first_name}] Rose image generated")
+            meme_image = await run_in_executor(rose_gen.compose_meme, rose_image, caption)
+            return caption, meme_image
 
-        meme_image = await loop.run_in_executor(
-            None, rose_gen.compose_meme, rose_image, caption
-        )
+        caption, meme_image = await asyncio.wait_for(generate(), timeout=GENERATION_TIMEOUT)
 
-        # Delete status message before sending the result
         await delete_message_quietly(status_msg)
 
-        # Send the meme
         await update.message.reply_photo(
             photo=meme_image,
             caption=f"🌹 *{user.first_name}'s Meme* 🌹\n\n_{prompt}_\n\n💬 {caption}",
             parse_mode='Markdown'
         )
 
-        # Add action buttons
         keyboard = [
             [
                 InlineKeyboardButton("😂 Love it!", callback_data="good"),
@@ -150,6 +172,16 @@ async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
+    except asyncio.TimeoutError:
+        logger.error(f"Generation timed out for {user.first_name} after {GENERATION_TIMEOUT}s")
+        await delete_message_quietly(status_msg)
+        error_msg = await update.message.reply_text(
+            "⏱️ Meme generation timed out — the image service is busy. Try again in a moment!"
+        )
+        await asyncio.sleep(6)
+        await delete_message_quietly(error_msg)
+        user_cooldowns.pop(user_id, None)
+
     except Exception as e:
         logger.error(f"Error generating meme for {user.first_name}: {e}")
         await delete_message_quietly(status_msg)
@@ -158,14 +190,11 @@ async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
         await asyncio.sleep(5)
         await delete_message_quietly(error_msg)
-
-        # Reset cooldown on failure so user can try again immediately
         user_cooldowns.pop(user_id, None)
 
 
 def generate_caption(prompt: str) -> str:
-    """Use Claude to generate a meme caption from user prompt."""
-    system_prompt = """You are a meme caption generator for Rose, a confident and sassy female.
+    system_prompt = """You are a meme caption generator for Rose, a confident, sexy and sassy female.
 
 Rose characteristics:
 - Orange/red wavy hair with green hair accessory
@@ -173,7 +202,7 @@ Rose characteristics:
 - Confident, flirty, sassy personality
 - Can be in any situation/outfit
 
-Your job: Create a SHORT, FUNNY meme caption based on the user's prompt.
+Your job: Make sure you use the caption provided in the prompt if given one. If no caption is provided then create a SHORT, FUNNY meme caption based on the user's prompt.
 
 Requirements:
 - Keep it SHORT (50-150 characters)
@@ -199,7 +228,6 @@ Return ONLY the caption text. Nothing else."""
 
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle button clicks."""
     query = update.callback_query
     await query.answer()
 
@@ -214,7 +242,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Help message"""
     help_text = """🌹 *Rose AI Meme Generator Help* 🌹
 
 *Command:* `/meme <your prompt>`
@@ -230,12 +257,16 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Log errors."""
     logger.error(f"Error: {context.error}")
 
 
+# ── Entry point ────────────────────────────────────────────────────────────────
+
 def main():
-    """Start the bot."""
+    # Start health check server in a background thread so Render sees an open port
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
+
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
