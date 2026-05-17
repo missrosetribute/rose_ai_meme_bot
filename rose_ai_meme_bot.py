@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Rose AI Meme Bot - Telegram Bot with Dynamic Rose Image Generation
-Users send prompts → Claude generates meme caption + Rose description → Creates unique meme
+Rose AI Meme Bot - Dynamic Rose Image Generation
+Claude (Anthropic) generates Rose descriptions + DALL-E 3 creates unique images
+Best quality with minimal errors
 """
 
 import logging
@@ -34,24 +35,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Welcome message"""
     welcome_text = """🌹 **Rose AI Meme Generator** 🌹
 
-Send me any prompt, and I'll create a unique meme with Rose!
+Send me any prompt, and I'll create a UNIQUE meme with a dynamically generated Rose!
 
 **How it works:**
-1. You describe what you want
-2. I generate a funny caption
-3. I create Rose based on the context
-4. You get a unique meme!
+1. You send a prompt (e.g., "Rose trading crypto")
+2. Claude generates a funny caption + Rose description
+3. DALL-E 3 creates a unique Rose image
+4. You get a brand new meme!
 
-**Examples:**
-• "Rose being a mod"
-• "trading $ROSE gains"
+**Every Rose is different:**
+- Same character (orange hair, green bow, confident)
+- Different outfit based on context
+- Different pose based on situation
+- Different setting/props
+- Completely unique each time!
+
+**Try these prompts:**
+• "Rose at the gym"
+• "Rose as a detective"
 • "Rose at a party"
-• "Rose in business mode"
-• Any situation you can think of!
+• "Rose trading $ROSE"
+• Any situation you imagine!
 
-Each meme has a dynamically created Rose - different outfit, pose, and style based on your prompt!
-
-*Powered by Claude AI*
+*Powered by Claude + DALL-E 3*
 """
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
@@ -61,40 +67,40 @@ async def generate_meme(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     
     try:
         await update.message.chat.send_action("upload_photo")
-        await update.message.reply_text("✨ Creating your unique meme...")
+        await update.message.reply_text("✨ Creating your unique meme...\n(Generating caption and Rose image)")
         
         # Step 1: Generate meme caption from prompt
         caption = generate_caption(user_prompt)
+        logger.info(f"Generated caption: {caption}")
         
-        # Step 2: Generate Rose description based on prompt + caption
-        rose_description = rose_gen.generate_rose_description(user_prompt, caption)
-        logger.info(f"Rose description: {rose_description}")
+        # Step 2: Generate Rose image based on prompt + caption
+        rose_image = rose_gen.generate_rose_image(user_prompt, caption)
+        logger.info(f"Generated Rose image")
         
-        # Step 3: Create meme with caption
-        # (In production, you'd also generate the Rose image using the description)
-        meme_image = rose_gen.create_visual_meme(rose_description, caption)
+        # Step 3: Compose final meme
+        meme_image = rose_gen.compose_meme(rose_image, caption)
         
         # Step 4: Send to user
         await update.message.reply_photo(
             photo=meme_image,
-            caption=f"*Your unique meme for:* {user_prompt}\n\n💬 {caption}",
+            caption=f"🌹 *Your Unique Meme* 🌹\n\n_{user_prompt}_\n\n💬 {caption}",
             parse_mode='Markdown'
         )
         
         # Add action buttons
         keyboard = [
             [
-                InlineKeyboardButton("😂 Great!", callback_data="good"),
+                InlineKeyboardButton("😂 Love it!", callback_data="good"),
                 InlineKeyboardButton("🔄 New Meme", callback_data="regen"),
             ]
         ]
         await update.message.reply_text(
-            "Like it?",
+            "Like your meme?",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
         
     except Exception as e:
-        logger.error(f"Error: {e}")
+        logger.error(f"Error generating meme: {e}")
         await update.message.reply_text(
             "❌ Oops! Something went wrong. Try another prompt!"
         )
@@ -104,25 +110,22 @@ def generate_caption(prompt):
     
     system_prompt = """You are a meme caption generator for Rose, a confident and sassy bot.
 
-Rose has:
+Rose characteristics:
 - Orange/red wavy hair with green bow
 - Vintage retro pinup aesthetic
 - Confident, flirty, sassy personality
-- Can appear in any outfit or setting based on the meme context
+- Can be in any situation/outfit
 
-Your job:
-1. Understand the user's meme context
-2. Generate a SHORT, FUNNY meme caption
-3. Make it work with a dynamic Rose (who will look different each time)
+Your job: Create a SHORT, FUNNY meme caption based on the user's prompt.
 
 Requirements:
 - Keep it SHORT (50-150 characters)
 - Make it FUNNY and shareable
-- Can be one or two lines (use \\n for line breaks)
-- The caption should work regardless of Rose's specific outfit/pose
-- Works as a meme caption
+- Can be 1-2 lines (use \\n for line breaks)
+- Appropriate for the meme context
+- Works with Rose in any outfit/situation
 
-Return ONLY the caption text, nothing else."""
+Return ONLY the caption text. Nothing else."""
 
     message = anthropic_client.messages.create(
         model="claude-opus-4-20250514",
@@ -143,26 +146,28 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await query.answer()
     
     if query.data == "regen":
-        await query.edit_message_text("Send another prompt! 🎨")
+        await query.edit_message_text("Send another prompt to create a new meme! 🎨")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Help message"""
-    help_text = """🌹 **How to Use** 🌹
+    help_text = """🌹 **Rose AI Meme Generator Help** 🌹
 
-Send any prompt describing a situation or context, and I'll create a unique meme with a dynamically generated Rose!
+**Send any prompt and I'll create a unique meme!**
 
-**The magic:**
-- Your prompt → Claude creates funny caption
-- Your prompt → Claude describes how Rose should look
-- Rose is created fresh each time with relevant outfit and pose!
+Each meme has:
+✨ Unique Rose image (generated just for your meme)
+✨ Funny AI caption
+✨ Contextual outfit/pose
+✨ Perfect for sharing
 
 **Examples:**
-- "Rose at the gym" → Rose in gym clothes, confident pose
-- "Rose trading crypto" → Rose in business casual, focused
-- "Rose at a concert" → Rose in party outfit, excited
-- "Rose as a pirate" → Rose in pirate outfit, adventurous
+• "Rose as a CEO" → Rose in suit at desk
+• "Rose at beach" → Rose in beach outfit
+• "Rose playing guitar" → Rose with instrument
+• "Rose cooking" → Rose in kitchen
+• Any scenario you can imagine!
 
-Each meme is 100% unique!
+The magic: Rose always looks like Rose, but she's created fresh each time based on YOUR prompt!
 """
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
@@ -180,7 +185,7 @@ def main():
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_error_handler(error_handler)
     
-    logger.info("🌹 Rose AI Meme Bot started!")
+    logger.info("🌹 Rose AI Meme Bot started with Claude + DALL-E 3!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
