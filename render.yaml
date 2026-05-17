@@ -9,3 +9,5 @@ services:
         scope: run
       - key: ANTHROPIC_API_KEY
         scope: run
+      - key: OPENAI_API_KEY
+        scope: run
