@@ -1,6 +1,6 @@
 """
 Dynamic Image Generator - Creates unique Rose images using Claude + gpt-image-1
-Claude generates detailed descriptions, gpt-image-1 edits rose_avatar_alt.png as base.
+Claude generates detailed descriptions, gpt-image-1 edits rose_avatar_alt4.png as base.
 Text is added dynamically by gpt-image-1 during creation - not post-processed.
 Target size: 852x1280 (portrait orientation)
 """
@@ -14,8 +14,8 @@ from PIL import Image, ImageDraw, ImageFont
 import textwrap
 import os
 
-# Always use rose_avatar_alt.png as the base reference
-ROSE_BASE_IMAGE = "rose_avatar_alt.png"
+# Always use rose_avatar_alt4.png as the base reference
+ROSE_BASE_IMAGE = "rose_avatar_alt4.png"
 
 
 def detect_media_type(data: bytes) -> str:
@@ -45,7 +45,7 @@ class RoseImageGenerator:
         self.target_height = 1280
 
     def _load_rose_base(self):
-        """Load rose_avatar_alt.png as the base reference."""
+        """Load rose_avatar_alt4.png as the base reference."""
         try:
             with open(ROSE_BASE_IMAGE, "rb") as f:
                 raw = f.read()
@@ -68,7 +68,7 @@ class RoseImageGenerator:
         
         Flow:
         1. Claude analyzes Rose base image and writes a visual description
-        2. gpt-image-1 edit mode uses rose_avatar_alt.png as base
+        2. gpt-image-1 edit mode uses rose_avatar_alt4.png as base
         3. gpt-image-1 transforms it AND adds caption text dynamically
         4. Return the edited image with caption already integrated
         """
@@ -142,7 +142,7 @@ Example: "Rose wears a sleek business suit with a laptop, sitting confidently at
 
     def _generate_image_edit(self, rose_description, caption):
         """
-        Use gpt-image-1 edit mode with rose_avatar_alt.png as the base.
+        Use gpt-image-1 edit mode with rose_avatar_alt4.png as the base.
         The prompt tells gpt-image-1 to add the caption text dynamically during creation.
         """
         
