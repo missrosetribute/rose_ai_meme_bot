@@ -189,7 +189,7 @@ Example: "Rose wears a sleek business suit with a laptop, sitting confidently at
                 model="gpt-image-1",
                 image=png_bytes,
                 prompt=prompt,
-                size="1024x1024",
+                size="1024x1536",
                 n=1,
             )
             
