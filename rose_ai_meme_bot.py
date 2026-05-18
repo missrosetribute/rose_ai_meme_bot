@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-Rose AI Meme Bot - Group Chat Version
+Rose AI Meme Bot - Group Chat Version with Request Queuing
 - Triggered by /meme <prompt> command
 - 180 second per-user cooldown
-- Fully async so multiple users can generate simultaneously
+- Fully async with proper concurrent request handling
 - Status messages are deleted after image is sent
 - No buttons - clean simple interface
 - gpt-image-1 handles all caption placement dynamically
 - Graceful shutdown on SIGTERM (for Render deployments)
+- QUEUE SYSTEM: Instantly replies that request is queued, processes in background
 """
 
 import logging
@@ -54,6 +55,11 @@ user_cooldowns: dict[int, float] = {}
 
 # Global app reference for shutdown
 app_instance = None
+
+# Queue tracking: {user_id: queue_position}
+request_queue: dict[int, int] = {}
+queue_lock = asyncio.Lock()
+queue_counter = 0
 
 
 # ── Render health check server ─────────────────────────────────────────────────
@@ -108,6 +114,31 @@ async def run_in_executor(func, *args):
     return await loop.run_in_executor(executor, func, *args)
 
 
+async def add_to_queue(user_id: int) -> int:
+    """Add user to queue and return their position"""
+    global queue_counter
+    async with queue_lock:
+        queue_counter += 1
+        position = queue_counter
+        request_queue[user_id] = position
+        logger.info(f"User {user_id} added to queue at position {position}")
+        return position
+
+
+async def remove_from_queue(user_id: int) -> None:
+    """Remove user from queue"""
+    async with queue_lock:
+        if user_id in request_queue:
+            del request_queue[user_id]
+            logger.info(f"User {user_id} removed from queue")
+
+
+async def get_queue_position(user_id: int) -> int:
+    """Get current position in queue"""
+    async with queue_lock:
+        return request_queue.get(user_id, 0)
+
+
 # ── Command handlers ───────────────────────────────────────────────────────────
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -152,10 +183,31 @@ async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     # Mark cooldown immediately so user can't spam while generating
     user_cooldowns[user_id] = time.time()
 
-    status_msg = await update.message.reply_text(
-        f"✨ Generating your meme...don't run away! 😘"
+    # Add to queue and get position
+    queue_position = await add_to_queue(user_id)
+
+    # Immediately tell user their request is queued
+    if queue_position == 1:
+        queue_msg = await update.message.reply_text(
+            f"⏳ Your meme is generating now...don't run away! 😘"
+        )
+    else:
+        queue_msg = await update.message.reply_text(
+            f"📋 Your meme request is in the queue!\n\n"
+            f"Position: #{queue_position}\n\n"
+            f"⏳ Estimated wait: ~{(queue_position - 1) * 60}s"
+        )
+
+    # Process in background (non-blocking)
+    asyncio.create_task(
+        process_meme_generation(user, prompt, queue_msg)
     )
 
+
+async def process_meme_generation(user, prompt: str, status_msg) -> None:
+    """Process meme generation in background without blocking other commands"""
+    user_id = user.id
+    
     try:
         async def generate():
             caption = await run_in_executor(generate_caption, prompt)
@@ -172,30 +224,37 @@ async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await delete_message_quietly(status_msg)
 
         # Send image - caption is already integrated by gpt-image-1
-        await update.message.reply_photo(
-            photo=meme_image,
-            caption=f"🌹 *{user.first_name}'s Rose Meme* 🌹"
-        )
+        try:
+            await status_msg.chat.send_photo(
+                photo=meme_image,
+                caption=f"🌹 *{user.first_name}'s Rose Meme* 🌹"
+            )
+        except Exception as e:
+            logger.error(f"Error sending photo: {e}")
+            await status_msg.reply_text("❌ Error sending meme!")
 
     except asyncio.TimeoutError:
         logger.error(f"Generation timed out for {user.first_name} after {GENERATION_TIMEOUT}s")
         await delete_message_quietly(status_msg)
-        error_msg = await update.message.reply_text(
+        error_msg = await status_msg.reply_text(
             "⏱️ Meme generation timed out — the image service is busy. Try again in a moment!"
         )
         await asyncio.sleep(6)
         await delete_message_quietly(error_msg)
-        user_cooldowns.pop(user_id, None)
 
     except Exception as e:
         logger.error(f"Error generating meme for {user.first_name}: {e}")
         await delete_message_quietly(status_msg)
-        error_msg = await update.message.reply_text(
-            "❌ Something went wrong generating your meme. Try again!"
+        error_msg = await status_msg.reply_text(
+            f"❌ Something went wrong generating your meme: {str(e)[:50]}"
         )
         await asyncio.sleep(5)
         await delete_message_quietly(error_msg)
-        user_cooldowns.pop(user_id, None)
+
+    finally:
+        # Always remove from queue when done
+        await remove_from_queue(user_id)
+        logger.info(f"[{user.first_name}] Meme generation complete, removed from queue")
 
 
 def generate_caption(prompt: str) -> str:
@@ -277,7 +336,7 @@ def main():
     app_instance.add_handler(CommandHandler("meme", meme_command))
     app_instance.add_error_handler(error_handler)
 
-    logger.info("🌹 Rose AI Meme Bot started (group chat mode, no buttons)!")
+    logger.info("🌹 Rose AI Meme Bot started (group chat mode, queue system enabled)!")
     app_instance.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
