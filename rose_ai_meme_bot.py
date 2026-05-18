@@ -5,7 +5,8 @@ Rose AI Meme Bot - Group Chat Version
 - 180 second per-user cooldown
 - Fully async so multiple users can generate simultaneously
 - Status messages are deleted after image is sent
-- Binds to port 10000 to satisfy Render's web service port scan
+- No buttons - clean simple interface
+- gpt-image-1 handles all caption placement dynamically
 """
 
 import logging
@@ -14,11 +15,10 @@ import time
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from concurrent.futures import ThreadPoolExecutor
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
-    CallbackQueryHandler,
     ContextTypes,
 )
 from telegram.error import BadRequest
@@ -95,14 +95,13 @@ async def run_in_executor(func, *args):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     welcome_text = """🌹 *Rose AI Meme Generator* 🌹
 
-Use `/meme <your prompt>` to create a unique Rose meme!
+Use `/meme <your prompt>` to create a unique Miss Rose meme!
 
 *Examples:*
 • `/meme Rose at the gym`
 • `/meme Rose as a detective`
 • `/meme Rose trading crypto`
 • `/meme Rose at a beach party`
-
 """
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
@@ -136,8 +135,7 @@ async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     user_cooldowns[user_id] = time.time()
 
     status_msg = await update.message.reply_text(
-        f"✨ Generating your meme, don't run away!",
-        parse_mode='Markdown'
+        f"✨ Generating your meme...don't run away!😘"
     )
 
     try:
@@ -155,13 +153,12 @@ async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         await delete_message_quietly(status_msg)
 
+        # Send image - caption is already integrated by gpt-image-1
         await update.message.reply_photo(
             photo=meme_image,
-            caption=f"🌹 *{user.first_name}'s Meme* 🌹\n\n💬 {caption}",
-            parse_mode='Markdown'
+            caption=f"🌹 *{user.first_name}'s Rose Meme* 🌹"
         )
 
-      
     except asyncio.TimeoutError:
         logger.error(f"Generation timed out for {user.first_name} after {GENERATION_TIMEOUT}s")
         await delete_message_quietly(status_msg)
@@ -184,21 +181,22 @@ async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 def generate_caption(prompt: str) -> str:
-    system_prompt = """You are a meme caption generator for Rose, a confident, sexy and sassy female.
+    """Generate a short, punchy caption for the meme."""
+    system_prompt = """You are a meme caption generator for Rose, a confident, sassy female character.
 
 Rose characteristics:
 - Orange/red wavy hair with green hair accessory
 - Vintage retro pinup aesthetic
 - Confident, flirty, sassy personality
-- Can be in any situation/outfit
 
-Your job: If the prompt provides a caption you must use it for the meme being generated.
-If no caption is provided then create a SHORT, FUNNY meme caption based on the user's prompt. No emojis.
+Your job: Create a SHORT, FUNNY meme caption based on the user's prompt.
+ONLY create a caption if the prompt doesn't explicitly tell you what the caption should be.
 
 Requirements:
-- Keep it SHORT (50-150 characters)
+- Keep it SHORT (30-100 characters)
+- No emojis
 - Make it FUNNY and shareable
-- Can be 1-2 lines (use \\n for line breaks)
+- Can be 1-2 lines (use \\n for line breaks if needed)
 - Appropriate for the meme context
 - Works with Rose in any outfit/situation
 
@@ -206,7 +204,7 @@ Return ONLY the caption text. Nothing else."""
 
     message = anthropic_client.messages.create(
         model="claude-sonnet-4-5",
-        max_tokens=200,
+        max_tokens=150,
         system=system_prompt,
         messages=[
             {"role": "user", "content": f"Create a meme caption for: {prompt}"}
@@ -251,7 +249,7 @@ def main():
     app.add_handler(CommandHandler("meme", meme_command))
     app.add_error_handler(error_handler)
 
-    logger.info("🌹 Rose AI Meme Bot started (group chat mode)!")
+    logger.info("🌹 Rose AI Meme Bot started (group chat mode, no buttons)!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
