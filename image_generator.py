@@ -124,7 +124,7 @@ REQUIREMENTS:
 - Return ONLY the description (2-3 sentences, no preamble)
 
 Example: "Rose wears a sleek business suit with a laptop, sitting confidently at a modern desk with the green bow still in her styled hair. She has a focused, determined expression. Place caption in elegant serif font at the top-left corner of the image, overlaid semi-transparently."""
-        }}
+        }]
         
         try:
             message = self.claude_client.messages.create(
