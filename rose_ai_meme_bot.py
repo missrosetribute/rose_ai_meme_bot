@@ -161,17 +161,7 @@ async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             parse_mode='Markdown'
         )
 
-        keyboard = [
-            [
-                InlineKeyboardButton("😂 Love it!", callback_data="good"),
-                InlineKeyboardButton("🔄 New Meme", callback_data=f"regen:{prompt}"),
-            ]
-        ]
-        await update.message.reply_text(
-            "Like your meme?",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-
+      
     except asyncio.TimeoutError:
         logger.error(f"Generation timed out for {user.first_name} after {GENERATION_TIMEOUT}s")
         await delete_message_quietly(status_msg)
@@ -202,7 +192,8 @@ Rose characteristics:
 - Confident, flirty, sassy personality
 - Can be in any situation/outfit
 
-Your job: Make sure you use the caption provided in the prompt if given one. If no caption is provided then create a SHORT, FUNNY meme caption based on the user's prompt.
+Your job: If the prompt provides a caption you must use it for the meme being generated.
+If no caption is provided then create a SHORT, FUNNY meme caption based on the user's prompt. No emojis.
 
 Requirements:
 - Keep it SHORT (50-150 characters)
@@ -225,20 +216,6 @@ Return ONLY the caption text. Nothing else."""
     caption = message.content[0].text.strip()
     caption = caption.replace('\\n', '\n')
     return caption
-
-
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    await query.answer()
-
-    if query.data.startswith("regen:"):
-        prompt = query.data.split("regen:", 1)[1]
-        await query.edit_message_text(
-            f"Send another prompt to generate a new one! 🎨",
-            parse_mode='Markdown'
-        )
-    elif query.data == "good":
-        await query.answer("Glad you love it! 🌹", show_alert=False)
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -272,7 +249,6 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("meme", meme_command))
-    app.add_handler(CallbackQueryHandler(button_callback))
     app.add_error_handler(error_handler)
 
     logger.info("🌹 Rose AI Meme Bot started (group chat mode)!")
