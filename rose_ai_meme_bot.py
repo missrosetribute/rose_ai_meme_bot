@@ -9,6 +9,7 @@ Rose AI Meme Bot - Group Chat Version with Request Queuing
 - gpt-image-1 handles all caption placement dynamically
 - Graceful shutdown on SIGTERM (for Render deployments)
 - QUEUE SYSTEM: Instantly replies that request is queued, processes in background
+  Queue is an ordered list that shrinks as tasks complete and resets when empty
 """
 
 import logging
@@ -56,10 +57,10 @@ user_cooldowns: dict[int, float] = {}
 # Global app reference for shutdown
 app_instance = None
 
-# Queue tracking: {user_id: queue_position}
-request_queue: dict[int, int] = {}
+# Queue tracking: ordered list of user_ids
+# Naturally resets to empty when all tasks complete
+request_queue: list[int] = []
 queue_lock = asyncio.Lock()
-queue_counter = 0
 
 
 # ── Render health check server ─────────────────────────────────────────────────
@@ -115,28 +116,35 @@ async def run_in_executor(func, *args):
 
 
 async def add_to_queue(user_id: int) -> int:
-    """Add user to queue and return their position"""
-    global queue_counter
+    """Add user to queue and return their 1-based position"""
     async with queue_lock:
-        queue_counter += 1
-        position = queue_counter
-        request_queue[user_id] = position
+        request_queue.append(user_id)
+        position = len(request_queue)
         logger.info(f"User {user_id} added to queue at position {position}")
         return position
 
 
 async def remove_from_queue(user_id: int) -> None:
-    """Remove user from queue"""
+    """Remove user from queue; list shrinks and resets to empty when all done"""
     async with queue_lock:
         if user_id in request_queue:
-            del request_queue[user_id]
-            logger.info(f"User {user_id} removed from queue")
+            request_queue.remove(user_id)
+            logger.info(f"User {user_id} removed from queue. Queue size: {len(request_queue)}")
+
+
+async def get_queue_size() -> int:
+    """Get current number of pending requests"""
+    async with queue_lock:
+        return len(request_queue)
 
 
 async def get_queue_position(user_id: int) -> int:
-    """Get current position in queue"""
+    """Get current 1-based position of user in queue, or 0 if not found"""
     async with queue_lock:
-        return request_queue.get(user_id, 0)
+        try:
+            return request_queue.index(user_id) + 1
+        except ValueError:
+            return 0
 
 
 # ── Command handlers ───────────────────────────────────────────────────────────
@@ -151,6 +159,8 @@ Use `/meme <your prompt>` to create a unique Rose meme!
 • `/meme Rose as a detective`
 • `/meme Rose trading crypto`
 • `/meme Rose at a beach party`
+
+Use `/queue` to see how many requests are pending.
 """
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
@@ -189,7 +199,7 @@ async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     # Immediately tell user their request is queued
     if queue_position == 1:
         queue_msg = await update.message.reply_text(
-            f"⏳ Your meme is generating now...don't run away! 😘"
+            "⏳ Your meme is generating now...don't run away! 😘"
         )
     else:
         queue_msg = await update.message.reply_text(
@@ -207,7 +217,7 @@ async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def process_meme_generation(user, prompt: str, status_msg) -> None:
     """Process meme generation in background without blocking other commands"""
     user_id = user.id
-    
+
     try:
         async def generate():
             caption = await run_in_executor(generate_caption, prompt)
@@ -252,26 +262,34 @@ async def process_meme_generation(user, prompt: str, status_msg) -> None:
         await delete_message_quietly(error_msg)
 
     finally:
-        # Always remove from queue when done
+        # Always remove from queue when done — list resets to [] when all tasks complete
         await remove_from_queue(user_id)
         logger.info(f"[{user.first_name}] Meme generation complete, removed from queue")
 
 
 def generate_caption(prompt: str) -> str:
-    """Generate a short, punchy caption for the meme."""
+    """Return user-specified caption or generate one via Claude."""
+
+    # Check for explicit caption override: "CAPTION: <text>"
+    upper = prompt.upper()
+    if "CAPTION:" in upper:
+        idx = upper.index("CAPTION:") + len("CAPTION:")
+        caption = prompt[idx:].strip()
+        if caption:
+            caption = caption.replace('\\n', '\n')
+            logger.info(f"Using user-supplied caption: {caption!r}")
+            return caption
+
+    # No caption provided — generate one with Claude
     system_prompt = """You are a meme caption generator for Rose, a confident, sassy female character.
 
 Rose characteristics:
-- Orange/red wavy hair with green bow
+- Orange/red wavy hair with green bow or green hair accessory
 - Vintage retro pinup aesthetic
 - Confident, flirty, sassy personality
 
 Your job: Create a SHORT, FUNNY meme caption based on the user's prompt.
-ONLY create a caption if the prompt does NOT provide one.
-Examples of a specific caption request could be:
-- Caption must say NO FUD ALLOWED
-- Add the words "Everything will be fine" to the meme
-- Make Rose say I love big green candles
+The user has NOT provided a caption, so invent one that fits the scene described.
 
 Requirements:
 - Keep it SHORT (30-100 characters)
@@ -297,19 +315,54 @@ Return ONLY the caption text. Nothing else."""
     return caption
 
 
+async def queue_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show current queue status to users"""
+    size = await get_queue_size()
+    if size == 0:
+        await update.message.reply_text(
+            "✅ Queue is empty — your meme will generate instantly!"
+        )
+    elif size == 1:
+        await update.message.reply_text(
+            "📋 *1 meme* is currently generating.",
+            parse_mode='Markdown'
+        )
+    else:
+        await update.message.reply_text(
+            f"📋 *{size} memes* are currently in the queue.\n\n"
+            f"⏳ Estimated wait for a new request: ~{size * 60}s",
+            parse_mode='Markdown'
+        )
+
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    help_text = """🌹 *Rose AI Meme Generator Help* 🌹
+    help_text = """🌹 *Rose AI Meme Generator — Troubleshooting* 🌹
 
-*Command:* `/meme <your prompt>`
+*❌ My meme failed or was rejected*
+Prompts that are sexual, violent or otherwise inappropriate are automatically moderated by AI and will fail. Keep prompts fun and safe\!
 
-*Examples:*
-• `/meme Rose as a CEO` → Rose in a power suit
-• `/meme Rose at the beach` → Rose in a beach outfit
-• `/meme Rose playing guitar` → Rose with an instrument
-• `/meme Rose cooking` → Rose in the kitchen
+*🖊️ Custom captions*
+By default, the AI generates a caption based on your prompt\. To set your own exact caption, include `CAPTION:` followed by your text:
+• `/meme Rose at the gym CAPTION: No pain no gain`
+• `/meme Rose trading crypto CAPTION: We're so back`
 
+Without `CAPTION:`, the AI will write one for you\.
+
+*⏳ Cooldown*
+Each user has a 3\-minute cooldown between memes\. If you see a wait message, sit tight\!
+
+*📋 Queue*
+Use `/queue` to see how many memes are currently generating\. Busy times may add a wait of \~60s per queued request\.
+
+*🔄 My meme timed out*
+The image service occasionally gets busy\. Wait a moment and try again — your cooldown still applies\.
+
+*💡 Tips for better memes*
+• Be specific: "Rose as a 1980s stockbroker" beats "Rose at work"
+• Describe an outfit or setting for more variety
+• Shorter captions look better on the image
 """
-    await update.message.reply_text(help_text, parse_mode='Markdown')
+    await update.message.reply_text(help_text, parse_mode='MarkdownV2')
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -320,11 +373,11 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 def main():
     global app_instance
-    
+
     # Register signal handlers for graceful shutdown
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
-    
+
     # Start health check server in a background thread so Render sees an open port
     health_thread = threading.Thread(target=start_health_server, daemon=True)
     health_thread.start()
@@ -334,6 +387,7 @@ def main():
     app_instance.add_handler(CommandHandler("start", start))
     app_instance.add_handler(CommandHandler("help", help_command))
     app_instance.add_handler(CommandHandler("meme", meme_command))
+    app_instance.add_handler(CommandHandler("queue", queue_command))
     app_instance.add_error_handler(error_handler)
 
     logger.info("🌹 Rose AI Meme Bot started (group chat mode, queue system enabled)!")
