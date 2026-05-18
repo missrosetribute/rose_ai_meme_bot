@@ -7,12 +7,15 @@ Rose AI Meme Bot - Group Chat Version
 - Status messages are deleted after image is sent
 - No buttons - clean simple interface
 - gpt-image-1 handles all caption placement dynamically
+- Graceful shutdown on SIGTERM (for Render deployments)
 """
 
 import logging
 import asyncio
 import time
 import threading
+import signal
+import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from concurrent.futures import ThreadPoolExecutor
 from telegram import Update
@@ -49,6 +52,9 @@ GENERATION_TIMEOUT = 120
 
 user_cooldowns: dict[int, float] = {}
 
+# Global app reference for shutdown
+app_instance = None
+
 
 # ── Render health check server ─────────────────────────────────────────────────
 
@@ -67,6 +73,18 @@ def start_health_server():
     server = HTTPServer(('0.0.0.0', port), HealthHandler)
     logger.info(f"Health check server listening on port {port}")
     server.serve_forever()
+
+
+# ── Graceful shutdown ──────────────────────────────────────────────────────────
+
+def signal_handler(sig, frame):
+    """Handle shutdown signals gracefully - called by Render before killing instance"""
+    logger.info("🛑 Received shutdown signal, closing gracefully...")
+    if app_instance:
+        app_instance.stop()
+    executor.shutdown(wait=False)
+    logger.info("✅ Bot shut down cleanly")
+    sys.exit(0)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -95,7 +113,7 @@ async def run_in_executor(func, *args):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     welcome_text = """🌹 *Rose AI Meme Generator* 🌹
 
-Use `/meme <your prompt>` to create a unique Miss Rose meme!
+Use `/meme <your prompt>` to create a unique Rose meme!
 
 *Examples:*
 • `/meme Rose at the gym`
@@ -135,7 +153,7 @@ async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     user_cooldowns[user_id] = time.time()
 
     status_msg = await update.message.reply_text(
-        f"✨ Generating your meme...don't run away!😘"
+        f"✨ Generating your meme...don't run away! 😘"
     )
 
     try:
@@ -185,12 +203,16 @@ def generate_caption(prompt: str) -> str:
     system_prompt = """You are a meme caption generator for Rose, a confident, sassy female character.
 
 Rose characteristics:
-- Orange/red wavy hair with green hair accessory
+- Orange/red wavy hair with green bow
 - Vintage retro pinup aesthetic
 - Confident, flirty, sassy personality
 
 Your job: Create a SHORT, FUNNY meme caption based on the user's prompt.
-ONLY create a caption if the prompt doesn't explicitly tell you what the caption should be.
+ONLY create a caption if the prompt does NOT provide one.
+Examples of a specific caption request could be:
+- Caption must say NO FUD ALLOWED
+- Add the words "Everything will be fine" to the meme
+- Make Rose say I love big green candles
 
 Requirements:
 - Keep it SHORT (30-100 characters)
@@ -238,19 +260,25 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 def main():
+    global app_instance
+    
+    # Register signal handlers for graceful shutdown
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    
     # Start health check server in a background thread so Render sees an open port
     health_thread = threading.Thread(target=start_health_server, daemon=True)
     health_thread.start()
 
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app_instance = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("meme", meme_command))
-    app.add_error_handler(error_handler)
+    app_instance.add_handler(CommandHandler("start", start))
+    app_instance.add_handler(CommandHandler("help", help_command))
+    app_instance.add_handler(CommandHandler("meme", meme_command))
+    app_instance.add_error_handler(error_handler)
 
     logger.info("🌹 Rose AI Meme Bot started (group chat mode, no buttons)!")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app_instance.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == '__main__':
