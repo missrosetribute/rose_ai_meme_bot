@@ -284,7 +284,7 @@ def generate_caption(prompt: str) -> str:
     system_prompt = """You are a meme caption generator for Rose, a confident, sassy female character.
 
 Rose characteristics:
-- Orange/red wavy hair with green bow or green hair accessory
+- Orange/red wavy hair with green bow or accessory
 - Vintage retro pinup aesthetic
 - Confident, flirty, sassy personality
 
@@ -336,33 +336,33 @@ async def queue_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    help_text = """🌹 *Rose AI Meme Generator — Troubleshooting* 🌹
+    help_text = """🌹 *Rose AI Meme Generator - Troubleshooting* 🌹
 
-*❌ My meme failed or was rejected*
-Prompts that are sexual, violent or otherwise inappropriate are automatically moderated by AI and will fail. Keep prompts fun and safe\!
+*My meme failed or was rejected*
+Prompts that are sexual, violent, or otherwise inappropriate are automatically moderated by AI and will fail. Keep prompts fun and safe.
 
-*🖊️ Custom captions*
-By default, the AI generates a caption based on your prompt\. To set your own exact caption, include `CAPTION:` followed by your text:
-• `/meme Rose at the gym CAPTION: No pain no gain`
-• `/meme Rose trading crypto CAPTION: We're so back`
+*Custom captions*
+By default, the AI writes a caption based on your prompt. To set your own exact caption, add `CAPTION:` followed by your text:
+`/meme Rose at the gym CAPTION: No pain no gain`
+`/meme Rose trading crypto CAPTION: We are so back`
 
-Without `CAPTION:`, the AI will write one for you\.
+Without `CAPTION:` the AI will write one for you.
 
-*⏳ Cooldown*
-Each user has a 3\-minute cooldown between memes\. If you see a wait message, sit tight\!
+*Cooldown*
+Each user has a 3-minute cooldown between memes. If you see a wait message, sit tight.
 
-*📋 Queue*
-Use `/queue` to see how many memes are currently generating\. Busy times may add a wait of \~60s per queued request\.
+*Queue*
+Use `/queue` to see how many memes are currently generating. Busy times may add around 60s per queued request.
 
-*🔄 My meme timed out*
-The image service occasionally gets busy\. Wait a moment and try again — your cooldown still applies\.
+*My meme timed out*
+The image service occasionally gets busy. Wait a moment and try again.
 
-*💡 Tips for better memes*
-• Be specific: "Rose as a 1980s stockbroker" beats "Rose at work"
-• Describe an outfit or setting for more variety
-• Shorter captions look better on the image
+*Tips for better memes*
+- Be specific: "Rose as a 1980s stockbroker" beats "Rose at work"
+- Describe an outfit or setting for more variety
+- Shorter captions look better on the image
 """
-    await update.message.reply_text(help_text, parse_mode='MarkdownV2')
+    await update.message.reply_text(help_text, parse_mode='Markdown')
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
