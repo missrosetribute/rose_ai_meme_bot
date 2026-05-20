@@ -92,7 +92,7 @@ Return ONLY the scene description (2-3 sentences). No preamble."""
             return "Rose in a confident pose, looking fabulous."
 
     def _generate_image(self, scene_description: str, caption: str) -> Image.Image:
-    """Use gpt-image-1 EDIT mode with file_id reference."""  # ← this line was missing
+        """Use gpt-image-1 EDIT mode with file_id reference."""  # ← this line was missing
     
     prompt = (
         "CHARACTER CONSISTENCY IS CRITICAL. "
