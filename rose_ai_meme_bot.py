@@ -247,9 +247,6 @@ async def process_meme_generation(update, user, prompt, status_msg, style) -> No
             rose_image = await run_in_executor(rose_gen.generate_rose_image, prompt, caption)
             logger.info(f"[{user.first_name}] Rose image generated")
 
-            og_rose_image = await run_in_executor(og_rose_gen.generate_rose_image, prompt, caption)
-            logger.info(f"[{user.first_name}] Rose image generated")
-
             meme_image = await run_in_executor(rose_gen.compose_meme, rose_image, caption)
             return caption, meme_image
 
