@@ -168,6 +168,17 @@ Use `/queue` to see how many requests are pending.
 
 
 async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /meme command - vintage pinup Rose"""
+    await _handle_meme_request(update, context, style='vintage')
+
+
+async def ogmeme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /ogmeme command - original bot Rose"""
+    await _handle_meme_request(update, context, style='og')
+
+
+async def _handle_meme_request(update: Update, context: ContextTypes.DEFAULT_TYPE, style: str) -> None:
+    """Shared handler logic for both /meme and /ogmeme commands"""
     user = update.effective_user
     user_id = user.id
 
@@ -181,44 +192,51 @@ async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await delete_message_quietly(cooldown_msg)
         return
 
-    # Check prompt was provided
+    # Check prompt
     prompt = " ".join(context.args).strip()
     if not prompt:
         usage_msg = await update.message.reply_text(
-            "❓ Please provide a prompt!\nExample: `/ogmeme Rose at the gym`",
+            f"❓ Please provide a prompt!\nExample: `/{style}meme Rose at the gym`",
             parse_mode='Markdown'
         )
         await asyncio.sleep(5)
         await delete_message_quietly(usage_msg)
         return
 
-    # Mark cooldown immediately so user can't spam while generating
+    # Rest of logic...
     user_cooldowns[user_id] = time.time()
-
-    # Add to queue and get position
     queue_position = await add_to_queue(user_id)
+    queue_size, active_count = get_queue_stats()
 
-    # Immediately tell user their request is queued
-    if queue_position == 1:
+    if queue_position == 1 and active_count == 0:
         queue_msg = await update.message.reply_text(
-            "⏳ Your meme is generating now...don't run away! 😘"
+            f"⏳ Your meme is generating now...\n\n🌹 You're up!"
         )
     else:
+        est_wait = (queue_position - 1) * 30
         queue_msg = await update.message.reply_text(
             f"📋 Your meme request is in the queue!\n\n"
-            f"Position: #{queue_position}\n\n"
-            f"⏳ Estimated wait: ~{(queue_position - 1) * 60}s"
+            f"Position: #{queue_position}\n"
+            f"Ahead of you: {queue_position - 1}\n"
+            f"Currently processing: {active_count}\n\n"
+            f"⏳ Estimated wait: ~{est_wait}s"
         )
 
-    # Process in background (non-blocking)
+    await wait_for_task_slot()
+    await start_task(user_id)
     asyncio.create_task(
-        process_meme_generation(user, prompt, queue_msg)
+        process_meme_generation(update, user, prompt, queue_msg, style)
     )
 
-
-async def process_meme_generation(user, prompt: str, status_msg) -> None:
-    """Process meme generation in background without blocking other commands"""
+async def process_meme_generation(update, user, prompt, status_msg, style) -> None:
+    """Process meme generation in background for specified Rose style without blocking other commands"""
     user_id = user.id
+
+    # Get the right generator
+    if style == 'vintage':
+        generator = meme_generators['vintage']
+    else:
+        generator = meme_generators['og']
 
     try:
         async def generate():
