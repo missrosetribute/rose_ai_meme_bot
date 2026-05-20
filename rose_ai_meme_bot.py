@@ -320,8 +320,11 @@ async def process_meme_generation(user, prompt: str, status_msg, style: str) -> 
     generator = meme_generators.get(style)
     if not generator:
         logger.error(f"No generator found for style: {style}")
-        await delete_message_quietly(status_msg)
-        await status_msg.reply_text("❌ Error: Meme style not available")
+        try:
+            await delete_message_quietly(status_msg)
+            await status_msg.reply_text("❌ Error: Meme style not available")
+        except Exception:
+            pass
         await complete_task(user_id)
         return
     
@@ -336,37 +339,70 @@ async def process_meme_generation(user, prompt: str, status_msg, style: str) -> 
             meme_image = await run_in_executor(generator.compose_meme, rose_image, caption)
             return caption, meme_image
 
-        caption, meme_image = await asyncio.wait_for(generate(), timeout=GENERATION_TIMEOUT)
+        # Increased timeout to 180 seconds (3 minutes) to allow for generation + sending
+        caption, meme_image = await asyncio.wait_for(generate(), timeout=180)
 
-        await delete_message_quietly(status_msg)
-
-        # Send image
+        # Delete status message quietly
         try:
-            await status_msg.chat.send_photo(
-                photo=meme_image,
-                caption=f"🌹 *{user.first_name}'s Rose Meme* 🌹"
-            )
+            await delete_message_quietly(status_msg)
         except Exception as e:
-            logger.error(f"Error sending photo: {e}")
-            await status_msg.reply_text("❌ Error sending meme!")
+            logger.warning(f"Could not delete status message: {e}")
+
+        # Send image - with retry logic
+        max_retries = 3
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                await status_msg.chat.send_photo(
+                    photo=meme_image,
+                    caption=f"🌹 *{user.first_name}'s Rose Meme* 🌹"
+                )
+                logger.info(f"[{user.first_name}] Meme sent successfully")
+                return  # Success! Exit the function
+                
+            except Exception as e:
+                last_error = e
+                logger.warning(f"Attempt {attempt + 1} to send photo failed: {e}")
+                
+                if attempt < max_retries - 1:
+                    # Wait a bit before retrying
+                    await asyncio.sleep(2)
+                else:
+                    # All retries exhausted
+                    logger.error(f"Failed to send meme after {max_retries} attempts: {last_error}")
+                    
+                    # Try to send error message directly to chat
+                    try:
+                        await status_msg.chat.send_message(
+                            "❌ Generated your meme but encountered an error sending it. Please try again!"
+                        )
+                    except Exception as send_error:
+                        logger.error(f"Could not send error message: {send_error}")
 
     except asyncio.TimeoutError:
-        logger.error(f"Generation timed out for {user.first_name} after {GENERATION_TIMEOUT}s")
-        await delete_message_quietly(status_msg)
-        error_msg = await status_msg.reply_text(
-            "⏱️ Meme generation timed out — the image service is busy. Try again in a moment!"
-        )
-        await asyncio.sleep(6)
-        await delete_message_quietly(error_msg)
+        logger.error(f"Generation timed out for {user.first_name} after 180s")
+        try:
+            await delete_message_quietly(status_msg)
+            error_msg = await status_msg.reply_text(
+                "⏱️ Meme generation took too long — the image service is slow. Try again in a moment!"
+            )
+            await asyncio.sleep(6)
+            await delete_message_quietly(error_msg)
+        except Exception as e:
+            logger.warning(f"Could not send timeout message: {e}")
 
     except Exception as e:
-        logger.error(f"Error generating meme for {user.first_name}: {e}")
-        await delete_message_quietly(status_msg)
-        error_msg = await status_msg.reply_text(
-            f"❌ Something went wrong generating your meme: {str(e)[:50]}"
-        )
-        await asyncio.sleep(5)
-        await delete_message_quietly(error_msg)
+        logger.error(f"Error generating meme for {user.first_name}: {e}", exc_info=True)
+        try:
+            await delete_message_quietly(status_msg)
+            error_msg = await status_msg.reply_text(
+                f"❌ Something went wrong generating your meme. Try again!"
+            )
+            await asyncio.sleep(5)
+            await delete_message_quietly(error_msg)
+        except Exception as msg_error:
+            logger.warning(f"Could not send error message: {msg_error}")
 
     finally:
         # Always mark task complete to close the loop
