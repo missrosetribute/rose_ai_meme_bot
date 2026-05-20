@@ -120,9 +120,9 @@ Return ONLY the scene description (2-3 sentences). No preamble."""
         image_data = base64.b64decode(response.data[0].b64_json)
         return Image.open(BytesIO(image_data))
 
-        except Exception as e:
-            print(f"❌ Generation failed: {e}")
-            return self._create_fallback_image("")
+    except exception as e:
+        print(f"❌ Generation failed: {e}")
+        return self._create_fallback_image("")
 
     def _download_image(self, url: str) -> bytes:
         """Download image from URL."""
