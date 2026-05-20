@@ -15,7 +15,7 @@ import textwrap
 import os
 
 # Always use og_rose_avatar_alt.jpg as the base reference
-OG_OG_ROSE_BASE_IMAGE = "og_rose_avatar_alt.jpg"
+OG_ROSE_BASE_IMAGE = "og_rose_avatar_alt.jpg"
 
 
 def detect_media_type(data: bytes) -> str:
