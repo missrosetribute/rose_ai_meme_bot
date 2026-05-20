@@ -95,6 +95,8 @@ Return ONLY the scene description (2-3 sentences). No preamble."""
     """Use gpt-image-1 EDIT mode with file_id reference."""  # ← this line was missing
     
     prompt = (
+        ...
+    )
         "CHARACTER CONSISTENCY IS CRITICAL. "
         "The reference image shows Rose - replicate her EXACTLY: same face, same hair color and style, "
         "same eye color, same skin tone, same vintage illustration art style. "
