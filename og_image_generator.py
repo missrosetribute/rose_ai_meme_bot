@@ -92,7 +92,7 @@ Return ONLY the scene description (2-3 sentences). No preamble."""
             return "Rose in a confident pose, looking fabulous."
 
     def _generate_image(self, scene_description: str, caption: str) -> Image.Image:
-        """Use gpt-image-1 EDIT mode with file_id reference."""  # ← this line was missing
+    """Use gpt-image-1 EDIT mode with file_id reference."""
     
     prompt = (
         "CHARACTER CONSISTENCY IS CRITICAL. "
@@ -104,7 +104,6 @@ Return ONLY the scene description (2-3 sentences). No preamble."""
     )
 
     try:
-        # Fetch reference image from pre-uploaded file_id
         ref_response = self.openai_client.files.content(self.rose_base_file_id)
         ref_bytes = BytesIO(ref_response.read())
 
@@ -120,10 +119,10 @@ Return ONLY the scene description (2-3 sentences). No preamble."""
         image_data = base64.b64decode(response.data[0].b64_json)
         return Image.open(BytesIO(image_data))
 
-    except exception as e:
+    except Exception as e:  # ← was lowercase 'exception'
         print(f"❌ Generation failed: {e}")
         return self._create_fallback_image("")
-
+        
     def _download_image(self, url: str) -> bytes:
         """Download image from URL."""
         import requests
@@ -148,17 +147,17 @@ Return ONLY the scene description (2-3 sentences). No preamble."""
             return self._create_fallback_image(caption)
 
     def _create_fallback_image(self, caption: str):
-        """Fallback image."""
-        img = Image.new("RGB", (self.target_width, self.target_height), (26, 26, 46))
-        draw = ImageDraw.Draw(img)
-        try:
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 32)
-        except Exception:
-            font = ImageFont.load_default()
-            draw.text((50, 600), "OG Rose Meme", font=font, fill=(255, 200, 220))
-        if caption:
-            draw.text((50, 700), caption, font=font, fill=(255, 255, 255))
-        img_bytes = BytesIO()
-        img.save(img_bytes, format="JPEG", quality=90)
-        img_bytes.seek(0)
-        return img_bytes
+    """Fallback image."""
+    img = Image.new("RGB", (self.target_width, self.target_height), (26, 26, 46))
+    draw = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 32)
+    except Exception:
+        font = ImageFont.load_default()
+    draw.text((50, 600), "OG Rose Meme", font=font, fill=(255, 200, 220))  # ← moved out
+    if caption:
+        draw.text((50, 700), caption, font=font, fill=(255, 255, 255))
+    img_bytes = BytesIO()
+    img.save(img_bytes, format="JPEG", quality=90)
+    img_bytes.seek(0)
+    return img_bytes
