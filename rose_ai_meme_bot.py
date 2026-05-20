@@ -29,7 +29,7 @@ from telegram.ext import (
 from telegram.error import BadRequest
 import anthropic
 from image_generator import RoseImageGenerator
-from og_image_generator import RoseImageGenerator
+from og_image_generator import OGRoseImageGenerator
 import os
 
 # Configure logging
