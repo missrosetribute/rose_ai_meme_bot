@@ -44,9 +44,9 @@ class OGRoseImageGenerator:
         else:
             print("⚠️ No file_id provided - gpt-image-1 won't have visual reference")
         
-        # Target dimensions (portrait)
-        self.target_width = 852
-        self.target_height = 1280
+        # Target dimensions
+        self.target_width = 1024
+        self.target_height = 1024
 
     def generate_rose_image(self, meme_prompt: str, meme_caption: str) -> Image.Image:
         """Generate an OG Rose style meme."""
@@ -116,7 +116,7 @@ Return ONLY the scene description (2-3 sentences). No preamble."""
             response = self.openai_client.images.generate(
                 model="gpt-image-1",
                 prompt=prompt,
-                size="1024x1536",
+                size="1024x1024",
                 n=1,
                 quality="hd",
             )
