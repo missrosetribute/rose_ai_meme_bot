@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Rose AI Meme Bot - Group Chat Version with Request Queuing
-- Triggered by /meme <prompt> command
+- Triggered by /meme <prompt> command or /ogmeme <prompt> command
 - 180 second per-user cooldown
 - Fully async with proper concurrent request handling
 - Status messages are deleted after image is sent
@@ -29,6 +29,7 @@ from telegram.ext import (
 from telegram.error import BadRequest
 import anthropic
 from image_generator import RoseImageGenerator
+from og_image_generator import RoseImageGenerator
 import os
 
 # Configure logging
@@ -152,12 +153,13 @@ async def get_queue_position(user_id: int) -> int:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     welcome_text = """🌹 *Rose AI Meme Generator* 🌹
 
-Use `/meme <your prompt>` to create a unique Rose meme!
+Use `/ogmeme <your prompt>` to create a unique OG styled Rose meme!
+Use `/meme <your prompt>` to create a unique Vintage styled Rose meme!
 
 *Examples:*
-• `/meme Rose at the gym`
+• `/ogmeme Rose at the gym`
 • `/meme Rose as a detective`
-• `/meme Rose trading crypto`
+• `/ogmeme Rose trading crypto`
 • `/meme Rose at a beach party`
 
 Use `/queue` to see how many requests are pending.
@@ -183,7 +185,7 @@ async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     prompt = " ".join(context.args).strip()
     if not prompt:
         usage_msg = await update.message.reply_text(
-            "❓ Please provide a prompt!\nExample: `/meme Rose at the gym`",
+            "❓ Please provide a prompt!\nExample: `/ogmeme Rose at the gym`",
             parse_mode='Markdown'
         )
         await asyncio.sleep(5)
@@ -268,10 +270,14 @@ async def process_meme_generation(user, prompt: str, status_msg) -> None:
 
 
 def generate_caption(prompt: str) -> str:
-    """Return user-specified caption or generate one via Claude."""
-
-    # Check for explicit caption override: "CAPTION: <text>"
+    """Return user-specified caption, generated caption, or empty string for no caption."""
+    # Check for explicit NO CAPTION option: "NOCAPTION" or "NO_CAPTION"
     upper = prompt.upper()
+    if "NOCAPTION" in upper or "NO_CAPTION" in upper or "NO CAPTION" in upper:
+        logger.info("User requested no caption")
+        return ""  # Return empty string = no caption
+    
+    # Check for explicit caption override: "CAPTION: <text>"
     if "CAPTION:" in upper:
         idx = upper.index("CAPTION:") + len("CAPTION:")
         caption = prompt[idx:].strip()
@@ -279,7 +285,7 @@ def generate_caption(prompt: str) -> str:
             caption = caption.replace('\\n', '\n')
             logger.info(f"Using user-supplied caption: {caption!r}")
             return caption
-
+    
     # No caption provided — generate one with Claude
     system_prompt = """You are a meme caption generator for Rose, a confident, sassy female character.
 
@@ -343,10 +349,10 @@ Prompts that are sexual, violent, or otherwise inappropriate are automatically m
 
 *Custom captions*
 By default, the AI writes a caption based on your prompt. To set your own exact caption, add `CAPTION:` followed by your text:
-`/meme Rose at the gym CAPTION: No pain no gain`
+`/ogmeme Rose at the gym CAPTION: No pain no gain`
 `/meme Rose trading crypto CAPTION: We are so back`
 
-Without `CAPTION:` the AI will write one for you.
+Without `CAPTION:` the AI will write one for you. For image only without any caption, add 'NOCAPTION'.
 
 *Cooldown*
 Each user has a 3-minute cooldown between memes. If you see a wait message, sit tight.
@@ -387,6 +393,7 @@ def main():
     app_instance.add_handler(CommandHandler("start", start))
     app_instance.add_handler(CommandHandler("help", help_command))
     app_instance.add_handler(CommandHandler("meme", meme_command))
+    app_instance.add_handler(CommandHandler("ogmeme", ogmeme_command))
     app_instance.add_handler(CommandHandler("queue", queue_command))
     app_instance.add_error_handler(error_handler)
 
