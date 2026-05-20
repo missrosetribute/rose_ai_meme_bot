@@ -196,6 +196,7 @@ Your job: Create a SHORT, FUNNY meme caption based on the user's prompt.
 
 Requirements:
 - Keep it SHORT (30-100 characters)
+- No emojis
 - Make it FUNNY and shareable
 - Can be 1-2 lines (use \\n for line breaks if needed)
 - Appropriate for the meme context
