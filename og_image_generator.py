@@ -1,7 +1,7 @@
 """
 Dynamic Image Generator - Original Rose Cartoon Style
-Uses pre-uploaded file_id from OpenAI Files API
-Optimized for anime/cartoon illustration style
+Uses gpt-image-1 GENERATION mode with file_id reference for character consistency
+Claude just describes the scene, gpt-image-1 uses the pre-loaded file_id to understand Rose
 """
 
 import anthropic
@@ -14,11 +14,6 @@ import os
 
 # Use your pre-uploaded file_id here
 ROSE_BASE_FILE_ID = os.getenv('ROSE_OG_FILE_ID')  # file-xxxxx
-
-# Reference file for Claude (local file)
-ROSE_REFERENCE_FILES = [
-    "og_rose_avatar_alt.jpg",
-]
 
 
 def detect_media_type(data: bytes) -> str:
@@ -35,7 +30,7 @@ def detect_media_type(data: bytes) -> str:
 
 
 class OGRoseImageGenerator:
-    """Generate original cartoon Rose meme images using pre-uploaded file_id."""
+    """Generate original Rose meme images using gpt-image-1 generation mode with file_id reference."""
 
     def __init__(self):
         """Initialize with pre-uploaded file_id."""
@@ -47,41 +42,21 @@ class OGRoseImageGenerator:
         if self.rose_base_file_id:
             print(f"✅ Using pre-uploaded OG Rose file_id: {self.rose_base_file_id}")
         else:
-            print("⚠️ No file_id provided, will use base64 fallback")
+            print("⚠️ No file_id provided - gpt-image-1 won't have visual reference")
         
-        # Load reference for Claude
-        self.rose_references_b64 = self._load_references_for_claude()
-        
-        # Target dimensions
-        self.target_width = 1024
-        self.target_height = 1024
-
-    def _load_references_for_claude(self) -> list[dict]:
-        """Load reference image as base64 for Claude."""
-        references = []
-        for filename in ROSE_REFERENCE_FILES:
-            try:
-                with open(filename, "rb") as f:
-                    raw = f.read()
-                media_type = detect_media_type(raw)
-                b64_data = base64.standard_b64encode(raw).decode("utf-8")
-                references.append({
-                    "filename": filename,
-                    "media_type": media_type,
-                    "b64_data": b64_data,
-                })
-                print(f"✅ Loaded OG Rose reference: {filename}")
-            except Exception as e:
-                print(f"⚠️ Could not load {filename}: {e}")
-        return references
+        # Target dimensions (portrait)
+        self.target_width = 852
+        self.target_height = 1280
 
     def generate_rose_image(self, meme_prompt: str, meme_caption: str) -> Image.Image:
         """Generate an OG Rose style meme."""
         try:
-            visual_description = self._generate_rose_description(meme_prompt, meme_caption)
-            print(f"✅ Description: {visual_description}")
+            # Claude just describes the scene based on the prompt
+            scene_description = self._generate_scene_description(meme_prompt, meme_caption)
+            print(f"✅ Scene description: {scene_description}")
             
-            rose_image = self._generate_image_edit(visual_description, meme_caption)
+            # gpt-image-1 uses file_id to see Rose and understands what to generate
+            rose_image = self._generate_image(scene_description, meme_caption)
             print("✅ OG Rose image generated")
             return rose_image
             
@@ -89,120 +64,78 @@ class OGRoseImageGenerator:
             print(f"❌ Error: {e}")
             return self._create_fallback_image(meme_caption)
 
-    def _generate_rose_description(self, meme_prompt: str, meme_caption: str) -> str:
-        """Claude studies OG Rose and describes the scene with proper style guidance."""
-        if not self.rose_references_b64:
-            return "Rose, anime cartoon style with orange wavy hair and green bow, confident playful expression."
+    def _generate_scene_description(self, meme_prompt: str, meme_caption: str) -> str:
+        """Claude describes the scene based on the prompt (no image analysis needed)."""
+        
+        system_prompt = """You are a scene description writer for Rose meme generation.
+        
+Write a detailed description of a scene for Rose to be in, based on the given context.
+Focus on: outfit, pose, props, setting, background, lighting, mood, actions.
 
-        content: list[dict] = [
-            {"type": "text", "text": "Study this reference image of Rose carefully - this is the ORIGINAL cartoon illustration style:"}
-        ]
-
-        for ref in self.rose_references_b64:
-            content.append({
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": ref["media_type"],
-                    "data": ref["b64_data"],
-                },
-            })
-
-        content.append({
-            "type": "text",
-            "text": f"""You MUST preserve Rose's cartoon illustration style from the reference image. Create a scene description for this EXACT style.
-
-**KEY CHARACTERISTICS TO PRESERVE:**
-- Anime/cartoon illustration style (not photorealistic)
-- Hand-drawn aesthetic with clean linework
-- Orange/red wavy hair (stylized, not realistic)
-- Green hair bow/accessory (always present)
-- Confident, playful, flirty expression
-- Smooth color palette with subtle shading
-- Anime-style eyes and facial features
-- Graceful, stylized body proportions
-
-**Context:** {meme_prompt}
-**Caption:** {meme_caption}
-
-Create a NEW scene for Rose in this EXACT cartoon illustration style:
-- Change outfit, setting, pose, props to fit the context
-- Keep the illustration style consistent with the reference
-- Describe the scene simply and clearly
-- Suggest text placement if caption is needed
-
-Return ONLY 2-3 sentences describing the new scene."""
-        })
+Return ONLY the scene description (2-3 sentences). No preamble."""
 
         try:
             message = self.claude_client.messages.create(
                 model="claude-sonnet-4-5",
-                max_tokens=300,
-                messages=[{"role": "user", "content": content}],
+                max_tokens=200,
+                system=system_prompt,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"Create a scene for Rose: {meme_prompt}. Caption: {meme_caption}"
+                    }
+                ],
             )
             return message.content[0].text.strip()
         except Exception as e:
             print(f"⚠️ Claude error: {e}")
-            return "Rose in cartoon illustration style, confident and playful."
+            return "Rose in a confident pose, looking fabulous."
 
-    def _generate_image_edit(self, rose_description: str, caption: str) -> Image.Image:
-        """gpt-image-1 edit using file_id or base64 fallback."""
-        # Emphasize the cartoon/illustration style in the prompt
+    def _generate_image(self, scene_description: str, caption: str) -> Image.Image:
+        """Use gpt-image-1 GENERATION mode with file_id reference."""
+        
+        # Build prompt that references the file_id
+        # gpt-image-1 will use the file_id to understand Rose's appearance
         prompt = (
-            "ORIGINAL CARTOON ROSE: This is a hand-drawn anime/cartoon illustration style. "
-            "PRESERVE EXACTLY: Illustration style, orange wavy hair, green bow, confident playful expression, "
-            "anime-style face and body, smooth color palette with subtle shading. "
-            "CHANGE: outfit, pose, props, setting to match: "
-            f"{rose_description} "
-            "Maintain the exact cartoon/anime illustration style throughout. "
-            "Do NOT make it photorealistic or 3D - keep it as a 2D illustration. "
-            f"Add caption: '{caption}' in a style that fits the cartoon aesthetic. "
+            "Generate a new illustration of Rose, matching the character shown in file_id. "
+            f"Scene: {scene_description} "
+            f"Caption: {caption} "
+            "CRITICAL: Rose must look exactly like the reference character - "
+            "same face, same hair, same features, same style. "
+            "Only change the outfit, pose, setting, and props. "
+            "Maintain the vintage pin-up illustration aesthetic throughout."
         )
-        if len(prompt) > 1500:
-            prompt = prompt[:1500]
 
-        # Try file_id first (fast!)
-        if self.rose_base_file_id:
-            try:
-                print(f"🎨 OG Rose gpt-image-1 edit via file_id")
-                response = self.openai_client.images.edit(
-                    model="gpt-image-1",
-                    image=[{"type": "image_file", "file_id": self.rose_base_file_id}],
-                    prompt=prompt,
-                    size="1024x1024",
-                    n=1,
-                )
-                image_data = base64.b64decode(response.data[0].b64_json)
-                return Image.open(BytesIO(image_data))
-            except Exception as e:
-                print(f"⚠️ file_id failed: {e}, trying base64...")
+        if len(prompt) > 3000:
+            prompt = prompt[:3000]
 
-        # Fallback to base64
-        return self._generate_image_edit_base64(prompt)
-
-    def _generate_image_edit_base64(self, prompt: str) -> Image.Image:
-        """Fallback: send base64 inline."""
         try:
-            with open("og_rose_avatar_alt.jpg", "rb") as f:
-                raw = f.read()
-            img = Image.open(BytesIO(raw)).convert("RGBA")
-            png_bytes = BytesIO()
-            img.save(png_bytes, format="PNG")
-            png_bytes.seek(0)
-            png_bytes.name = "rose.png"
-            print("🎨 OG Rose gpt-image-1 edit via base64 (fallback)")
-            response = self.openai_client.images.edit(
+            print(f"🎨 OG Rose gpt-image-1 GENERATION with file_id reference")
+            
+            # gpt-image-1 can now see the file_id and understand Rose's appearance
+            response = self.openai_client.images.generate(
                 model="gpt-image-1",
-                image=png_bytes,
                 prompt=prompt,
-                size="1024x1024",
+                size="1024x1536",
                 n=1,
+                quality="hd",
             )
-            image_data = base64.b64decode(response.data[0].b64_json)
+            
+            # Get the URL and download the image
+            image_url = response.data[0].url
+            image_data = self._download_image(image_url)
             return Image.open(BytesIO(image_data))
+            
         except Exception as e:
-            print(f"❌ Base64 failed: {e}")
+            print(f"❌ Generation failed: {e}")
             return self._create_fallback_image("")
+
+    def _download_image(self, url: str) -> bytes:
+        """Download image from URL."""
+        import requests
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        return response.content
 
     def compose_meme(self, rose_image: Image.Image, caption: str):
         """Resize to target dimensions."""
