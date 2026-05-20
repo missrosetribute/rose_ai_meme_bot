@@ -26,6 +26,16 @@ from image_generator import RoseImageGenerator
 from og_image_generator import OGRoseImageGenerator
 import os
 
+# Validate required env vars on startup
+required_vars = ['TELEGRAM_TOKEN', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY']
+missing = [v for v in required_vars if not os.getenv(v)]
+if missing:
+    print(f"❌ STARTUP FAILED - Missing env vars: {missing}")
+    sys.exit(1)
+
+print("✅ All env vars present")
+print(f"✅ TELEGRAM_TOKEN starts with: {os.getenv('TELEGRAM_TOKEN')[:10]}...")
+
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
