@@ -14,8 +14,8 @@ from PIL import Image, ImageDraw, ImageFont
 import textwrap
 import os
 
-# Always use rose_avatar_alt.jpg as the base reference
-ROSE_BASE_IMAGE = "og_rose_avatar_alt.jpg"
+# Always use og_rose_avatar_alt.jpg as the base reference
+OG_OG_ROSE_BASE_IMAGE = "og_rose_avatar_alt.jpg"
 
 
 def detect_media_type(data: bytes) -> str:
@@ -31,8 +31,8 @@ def detect_media_type(data: bytes) -> str:
     return "image/jpeg"
 
 
-class RoseImageGenerator:
-    """Generate unique Rose meme images using Claude + gpt-image-1."""
+class OGRoseImageGenerator:
+    """Generate unique OG Rose meme images using Claude + gpt-image-1."""
 
     def __init__(self):
         """Initialize with Claude and OpenAI clients."""
@@ -47,24 +47,24 @@ class RoseImageGenerator:
     def _load_rose_base(self):
         """Load og_rose_avatar_alt.jpg as the base reference."""
         try:
-            with open(ROSE_BASE_IMAGE, "rb") as f:
+            with open(OG_ROSE_BASE_IMAGE, "rb") as f:
                 raw = f.read()
             media_type = detect_media_type(raw)
             b64_data = base64.standard_b64encode(raw).decode("utf-8")
-            print(f"✅ Loaded {ROSE_BASE_IMAGE} as {media_type}")
+            print(f"✅ Loaded {OG_ROSE_BASE_IMAGE} as {media_type}")
             return {
-                "filename": ROSE_BASE_IMAGE,
+                "filename": OG_ROSE_BASE_IMAGE,
                 "media_type": media_type,
                 "b64_data": b64_data,
                 "raw": raw,
             }
         except Exception as e:
-            print(f"❌ Error loading {ROSE_BASE_IMAGE}: {e}")
+            print(f"❌ Error loading {OG_ROSE_BASE_IMAGE}: {e}")
             return None
 
     def generate_rose_image(self, meme_prompt, meme_caption):
         """
-        Generate a unique Rose image based on the meme prompt.
+        Generate a unique OG Rose image based on the meme prompt.
         
         Flow:
         1. Claude analyzes Rose base image and writes a visual description
