@@ -1,8 +1,8 @@
 """
-Dynamic Image Generator - Creates unique Rose images using Claude + gpt-image-1
-Claude generates detailed descriptions, gpt-image-1 edits rose_avatar_alt.jpg as base.
+Dynamic Image Generator - Creates unique OG Rose images using Claude + gpt-image-1
+Claude generates detailed descriptions, gpt-image-1 edits og_rose_avatar_alt.jpg as base.
 Text is added dynamically by gpt-image-1 during creation - not post-processed.
-Target size: 1024x1024 (portrait orientation)
+Target size: 1024x1024
 """
 
 import anthropic
@@ -15,7 +15,7 @@ import textwrap
 import os
 
 # Always use rose_avatar_alt.jpg as the base reference
-ROSE_BASE_IMAGE = "rose_avatar_alt.jpg"
+ROSE_BASE_IMAGE = "og_rose_avatar_alt.jpg"
 
 
 def detect_media_type(data: bytes) -> str:
@@ -40,12 +40,12 @@ class RoseImageGenerator:
         self.openai_client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
         self.rose_base = self._load_rose_base()
         
-        # Target dimensions (portrait)
+        # Target dimensions
         self.target_width = 1024
         self.target_height = 1024
 
     def _load_rose_base(self):
-        """Load rose_avatar_alt.jpg as the base reference."""
+        """Load og_rose_avatar_alt.jpg as the base reference."""
         try:
             with open(ROSE_BASE_IMAGE, "rb") as f:
                 raw = f.read()
@@ -68,7 +68,7 @@ class RoseImageGenerator:
         
         Flow:
         1. Claude analyzes Rose base image and writes a visual description
-        2. gpt-image-1 edit mode uses rose_avatar_alt.jpg as base
+        2. gpt-image-1 edit mode uses og_rose_avatar_alt.jpg as base
         3. gpt-image-1 transforms it AND adds caption text dynamically
         4. Return the edited image with caption already integrated
         """
@@ -93,7 +93,7 @@ class RoseImageGenerator:
         
         if not self.rose_base:
             print("⚠️ No base image loaded, using generic description")
-            return "Rose stands confidently with orange/red wavy hair and a green bow, wearing a vintage outfit in a retro pinup style."
+            return "Rose stands confidently with orange/red wavy hair and a green bow, wearing a vintage outfit in a retro cartoon style."
         
         # Build content with Rose base image
         content = [
@@ -117,7 +117,7 @@ Meme context: "{meme_prompt}"
 Caption: "{meme_caption}"
 
 REQUIREMENTS:
-- ALWAYS keep: Rose's core face structure, orange/red wavy hair, green bow, skin tone, retro 1950s pinup art style
+- ALWAYS keep: Rose's core face structure, orange/red wavy hair, green bow, skin tone, original cartoon art style
 - CAN CHANGE: outfit, pose, facial expressions, hairstyling details, props, accessories, background, setting
 - Be VERY specific about: new outfit details, pose/stance, props, background, lighting, mood
 - Include guidance on WHERE caption text should be placed (top, side, middle, overlay) and what font style would fit best
@@ -142,7 +142,7 @@ Example: "Rose wears a sleek business suit with a laptop, sitting confidently at
 
     def _generate_image_edit(self, rose_description, caption):
         """
-        Use gpt-image-1 edit mode with rose_avatar_alt.jpg as the base.
+        Use gpt-image-1 edit mode with og_rose_avatar_alt.jpg as the base.
         The prompt tells gpt-image-1 to add the caption text dynamically during creation.
         """
         
@@ -166,7 +166,7 @@ Example: "Rose wears a sleek business suit with a laptop, sitting confidently at
         # Build the edit prompt - tell gpt-image-1 to ADD the caption text
         prompt = (
             "This is Rose. Preserve her EXACT core characteristics: "
-            "face structure, eye shape, orange/red wavy hair, green bow, skin tone, and retro 1950s pinup art style. "
+            "face structure, eye shape, orange/red wavy hair, green bow, skin tone, and original cartoon art style. "
             "She must remain recognizable as the same character. "
             "Only change her outfit, pose, facial expression, hairstyling, props, and background to match: "
             f"{rose_description} "
@@ -176,7 +176,7 @@ Example: "Rose wears a sleek business suit with a laptop, sitting confidently at
             "use creative positioning (top, side, corner, overlay) and choose an appropriate font style. "
             "The text should look natural and integrated into the overall composition. "
             "You can use different font styles, sizes, and colors as appropriate to the meme. "
-            "Maintain the retro 1950s pinup illustration style throughout."
+            "Maintain the original cartoon illustration style throughout."
         )
         
         # Truncate if too long
