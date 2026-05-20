@@ -92,43 +92,36 @@ Return ONLY the scene description (2-3 sentences). No preamble."""
             return "Rose in a confident pose, looking fabulous."
 
     def _generate_image(self, scene_description: str, caption: str) -> Image.Image:
-        """Use gpt-image-1 GENERATION mode with file_id reference."""
-        
-        # Build prompt that references the file_id
-        # gpt-image-1 will use the file_id to understand Rose's appearance
-        prompt = (
-            "Generate a new illustration of Rose, matching the character shown in file_id. "
-            f"Scene: {scene_description} "
-            f"Caption: {caption} "
-            "CRITICAL: Rose must look exactly like the reference character - "
-            "same face, same hair, same features, same style. "
-            "Only change the outfit, pose, setting, and props. "
-            "Maintain the vintage pin-up illustration aesthetic throughout."
+    
+    prompt = (
+        "CHARACTER CONSISTENCY IS CRITICAL. "
+        "The reference image shows Rose - replicate her EXACTLY: same face, same hair color and style, "
+        "same eye color, same skin tone, same vintage illustration art style. "
+        "DO NOT alter her appearance in any way. "
+        f"Only change the scene: {scene_description} "
+        f"Caption context: {caption}"
+    )
+
+    try:
+        # Fetch reference image from pre-uploaded file_id
+        ref_response = self.openai_client.files.content(self.rose_base_file_id)
+        ref_bytes = BytesIO(ref_response.read())
+
+        response = self.openai_client.images.edit(
+            model="gpt-image-1",
+            image=ref_bytes,
+            prompt=prompt,
+            size="1024x1024",
+            n=1,
+            quality="high",
         )
 
-        if len(prompt) > 3000:
-            prompt = prompt[:3000]
+        image_data = base64.b64decode(response.data[0].b64_json)
+        return Image.open(BytesIO(image_data))
 
-        try:
-            print(f"🎨 OG Rose gpt-image-1 GENERATION with file_id reference")
-            
-            # gpt-image-1 can now see the file_id and understand Rose's appearance
-            response = self.openai_client.images.generate(
-                model="gpt-image-1",
-                prompt=prompt,
-                size="1024x1024",
-                n=1,
-                quality="hd",
-            )
-            
-            # Get the URL and download the image
-            image_url = response.data[0].url
-            image_data = self._download_image(image_url)
-            return Image.open(BytesIO(image_data))
-            
-        except Exception as e:
-            print(f"❌ Generation failed: {e}")
-            return self._create_fallback_image("")
+    except Exception as e:
+        print(f"❌ Generation failed: {e}")
+        return self._create_fallback_image("")
 
     def _download_image(self, url: str) -> bytes:
         """Download image from URL."""
