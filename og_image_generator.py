@@ -147,17 +147,17 @@ Return ONLY the scene description (2-3 sentences). No preamble."""
             return self._create_fallback_image(caption)
 
     def _create_fallback_image(self, caption: str):
-    """Fallback image."""
-    img = Image.new("RGB", (self.target_width, self.target_height), (26, 26, 46))
-    draw = ImageDraw.Draw(img)
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 32)
-    except Exception:
-        font = ImageFont.load_default()
-    draw.text((50, 600), "OG Rose Meme", font=font, fill=(255, 200, 220))  # ← moved out
-    if caption:
-        draw.text((50, 700), caption, font=font, fill=(255, 255, 255))
-    img_bytes = BytesIO()
-    img.save(img_bytes, format="JPEG", quality=90)
-    img_bytes.seek(0)
-    return img_bytes
+        """Fallback image."""
+        img = Image.new("RGB", (self.target_width, self.target_height), (26, 26, 46))
+        draw = ImageDraw.Draw(img)
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 32)
+        except Exception:
+            font = ImageFont.load_default()
+        draw.text((50, 600), "OG Rose Meme", font=font, fill=(255, 200, 220))  # ← moved out
+        if caption:
+            draw.text((50, 700), caption, font=font, fill=(255, 255, 255))
+        img_bytes = BytesIO()
+        img.save(img_bytes, format="JPEG", quality=90)
+        img_bytes.seek(0)
+        return img_bytes
