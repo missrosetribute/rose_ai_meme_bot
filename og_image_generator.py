@@ -92,36 +92,36 @@ Return ONLY the scene description (2-3 sentences). No preamble."""
             return "Rose in a confident pose, looking fabulous."
 
     def _generate_image(self, scene_description: str, caption: str) -> Image.Image:
-    """Use gpt-image-1 EDIT mode with file_id reference."""
-    
-    prompt = (
-        "CHARACTER CONSISTENCY IS CRITICAL. "
-        "The reference image shows Rose - replicate her EXACTLY: same face, same hair color and style, "
-        "same eye color, same skin tone, same vintage illustration art style. "
-        "DO NOT alter her appearance in any way. "
-        f"Only change the scene: {scene_description} "
-        f"Caption context: {caption}"
-    )
+        """Use gpt-image-1 EDIT mode with file_id reference."""
 
-    try:
-        ref_response = self.openai_client.files.content(self.rose_base_file_id)
-        ref_bytes = BytesIO(ref_response.read())
-
-        response = self.openai_client.images.edit(
-            model="gpt-image-1",
-            image=ref_bytes,
-            prompt=prompt,
-            size="1024x1024",
-            n=1,
-            quality="high",
+        prompt = (
+            "CHARACTER CONSISTENCY IS CRITICAL. "
+            "The reference image shows Rose - replicate her EXACTLY: same face, same hair color and style, "
+            "same eye color, same skin tone, same vintage illustration art style. "
+            "DO NOT alter her appearance in any way. "
+            f"Only change the scene: {scene_description} "
+            f"Caption context: {caption}"
         )
 
-        image_data = base64.b64decode(response.data[0].b64_json)
-        return Image.open(BytesIO(image_data))
+        try:
+            ref_response = self.openai_client.files.content(self.rose_base_file_id)
+            ref_bytes = BytesIO(ref_response.read())
 
-    except Exception as e:  # ← was lowercase 'exception'
-        print(f"❌ Generation failed: {e}")
-        return self._create_fallback_image("")
+            response = self.openai_client.images.edit(
+                model="gpt-image-1",
+                image=ref_bytes,
+                prompt=prompt,
+                size="1024x1024",
+                n=1,
+                quality="high",
+            )
+
+            image_data = base64.b64decode(response.data[0].b64_json)
+            return Image.open(BytesIO(image_data))
+
+        except Exception as e:
+            print(f"❌ Generation failed: {e}")
+            return self._create_fallback_image("")
         
     def _download_image(self, url: str) -> bytes:
         """Download image from URL."""
