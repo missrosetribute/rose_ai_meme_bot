@@ -120,9 +120,9 @@ Return ONLY the scene description (2-3 sentences). No preamble."""
         image_data = base64.b64decode(response.data[0].b64_json)
         return Image.open(BytesIO(image_data))
 
-    except Exception as e:
-        print(f"❌ Generation failed: {e}")
-        return self._create_fallback_image("")
+        except Exception as e:
+            print(f"❌ Generation failed: {e}")
+            return self._create_fallback_image("")
 
     def _download_image(self, url: str) -> bytes:
         """Download image from URL."""
@@ -155,7 +155,7 @@ Return ONLY the scene description (2-3 sentences). No preamble."""
             font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 32)
         except Exception:
             font = ImageFont.load_default()
-        draw.text((50, 600), "OG Rose Meme", font=font, fill=(255, 200, 220))
+            draw.text((50, 600), "OG Rose Meme", font=font, fill=(255, 200, 220))
         if caption:
             draw.text((50, 700), caption, font=font, fill=(255, 255, 255))
         img_bytes = BytesIO()
