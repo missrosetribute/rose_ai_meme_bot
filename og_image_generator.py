@@ -146,7 +146,7 @@ REQUIREMENTS:
             "same eye color, same skin tone, same original illustration art style. "
             "She must remain recognizable as the same character. "
             "Only change her outfit, pose, facial expression, props, and background to match: "
-            f"Only change the scene: {scene_description} "
+            f"Only change the scene: {rose_description} "
             "\n\nIMPORTANT: Add the caption text dynamically to the image during creation. "
             f"Caption context: {caption}"
             "Place the text in a natural location that doesn't cover important features. "
