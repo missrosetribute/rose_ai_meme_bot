@@ -367,24 +367,30 @@ async def process_meme_generation(user, prompt: str, status_msg, style: str) -> 
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    help_text = """🌹 *Rose AI Meme Generator Help* 🌹
+    help_text = """🌹 *Rose AI Meme Generator - Troubleshooting* 🌹
 
-*Two Rose Styles:*
-• `/meme <prompt>` → Vintage pinup Rose (retro 1950s style)
-• `/ogmeme <prompt>` → Original bot Rose (colorful modern style)
+*My meme failed or was rejected*
+Prompts that are sexual, violent, or otherwise inappropriate are automatically moderated by AI and will fail. Keep prompts fun and safe.
 
-*Caption Control:*
-• No args: Claude generates funny caption
-• `CAPTION: text` → Your custom caption
-• `NOCAPTION` → No caption at all
+*Custom captions*
+By default, the AI writes a caption based on your prompt. To set your own exact caption, add `CAPTION:` followed by your text:
+`/ogmeme Rose at the gym CAPTION: No pain no gain`
+`/meme Rose trading crypto CAPTION: We are so back`
+Without `CAPTION:` the AI will write one for you. For image only without any caption, add `NOCAPTION`.
 
-*Examples:*
-• `/meme Rose as a CEO`
-• `/meme Rose at beach CAPTION: Sun & Sass`
-• `/ogmeme Rose party NOCAPTION`
-• `/ogmeme Rose trading crypto`
+*Cooldown*
+Each user has a 3-minute cooldown between memes. If you see a wait message, sit tight.
 
-Each meme is unique with dynamically placed text!
+*Queue*
+Busy times may add around 60s per queued request.
+
+*My meme timed out*
+The image service occasionally gets busy. Wait a moment and try again.
+
+*Tips for better memes*
+• Be specific: "Rose as a 1980s stockbroker" beats "Rose at work"
+• Describe an outfit or setting for more variety
+• Shorter captions look better on the image
 """
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
