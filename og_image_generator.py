@@ -141,16 +141,18 @@ REQUIREMENTS:
             return self._create_fallback_image(caption)
 
         prompt = (
-            "This is Rose. Preserve her EXACT core characteristics: "
-            "face structure, eye shape, hair color and style, skin tone, and her original illustration art style. "
+            "CHARACTER CONSISTENCY IS CRITICAL. "
+            "The reference image shows Rose - replicate her EXACTLY: same face, same hair color and style, "
+            "same eye color, same skin tone, same original illustration art style. "
             "She must remain recognizable as the same character. "
             "Only change her outfit, pose, facial expression, props, and background to match: "
-            f"{rose_description} "
+            f"Only change the scene: {scene_description} "
             "\n\nIMPORTANT: Add the caption text dynamically to the image during creation. "
-            f"Caption: '{caption}' "
+            f"Caption context: {caption}"
             "Place the text in a natural location that doesn't cover important features. "
             "The text should look natural and integrated into the overall composition."
         )
+    
 
         if len(prompt) > 1500:
             prompt = prompt[:1500]
