@@ -1,49 +1,37 @@
 """
 Dynamic Image Generator - Original Rose Cartoon Style
-Uses gpt-image-1 GENERATION mode with file_id reference for character consistency
+Uses gpt-image-1 EDIT mode with file_id reference for character consistency
 Claude just describes the scene, gpt-image-1 uses the pre-loaded file_id to understand Rose
 """
 
 import anthropic
 import openai
 import base64
+import requests
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
-import textwrap
 import os
 
 # Use your pre-uploaded file_id here
 ROSE_BASE_FILE_ID = os.getenv('ROSE_OG_FILE_ID')  # file-xxxxx
 
 
-def detect_media_type(data: bytes) -> str:
-    """Detect image media type from magic bytes."""
-    if data[:3] == b'\xff\xd8\xff':
-        return "image/jpeg"
-    if data[:8] == b'\x89PNG\r\n\x1a\n':
-        return "image/png"
-    if data[:6] in (b'GIF87a', b'GIF89a'):
-        return "image/gif"
-    if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
-        return "image/webp"
-    return "image/jpeg"
-
-
 class OGRoseImageGenerator:
-    """Generate original Rose meme images using gpt-image-1 generation mode with file_id reference."""
+    """Generate original Rose meme images using gpt-image-1 edit mode with file_id reference."""
 
     def __init__(self):
         """Initialize with pre-uploaded file_id."""
         self.claude_client = anthropic.Anthropic()
         self.openai_client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-        
+        self.api_key = os.getenv('OPENAI_API_KEY')
+
         # Use pre-uploaded file_id
         self.rose_base_file_id = ROSE_BASE_FILE_ID
         if self.rose_base_file_id:
             print(f"✅ Using pre-uploaded OG Rose file_id: {self.rose_base_file_id}")
         else:
             print("⚠️ No file_id provided - gpt-image-1 won't have visual reference")
-        
+
         # Target dimensions
         self.target_width = 1024
         self.target_height = 1024
@@ -51,22 +39,20 @@ class OGRoseImageGenerator:
     def generate_rose_image(self, meme_prompt: str, meme_caption: str) -> Image.Image:
         """Generate an OG Rose style meme."""
         try:
-            # Claude just describes the scene based on the prompt
             scene_description = self._generate_scene_description(meme_prompt, meme_caption)
             print(f"✅ Scene description: {scene_description}")
-            
-            # gpt-image-1 uses file_id to see Rose and understands what to generate
+
             rose_image = self._generate_image(scene_description, meme_caption)
             print("✅ OG Rose image generated")
             return rose_image
-            
+
         except Exception as e:
             print(f"❌ Error: {e}")
             return self._create_fallback_image(meme_caption)
 
     def _generate_scene_description(self, meme_prompt: str, meme_caption: str) -> str:
-        """Claude describes the scene based on the prompt (no image analysis needed)."""
-        
+        """Claude describes the scene based on the prompt."""
+
         system_prompt = """You are a scene description writer for Rose meme generation.
         
 Write a detailed description of a scene for Rose to be in, based on the given context.
@@ -104,10 +90,16 @@ Return ONLY the scene description (2-3 sentences). No preamble."""
         )
 
         try:
-            ref_response = self.openai_client.files.content(self.rose_base_file_id)
-            ref_bytes = BytesIO(ref_response.read())
+            # Download reference image using explicit auth header to avoid key issues
+            file_response = requests.get(
+                f"https://api.openai.com/v1/files/{self.rose_base_file_id}/content",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                timeout=30
+            )
+            file_response.raise_for_status()
+            ref_bytes = BytesIO(file_response.content)
 
-            response = self.openai_client.images.edit(
+            edit_response = self.openai_client.images.edit(
                 model="gpt-image-1",
                 image=ref_bytes,
                 prompt=prompt,
@@ -116,19 +108,12 @@ Return ONLY the scene description (2-3 sentences). No preamble."""
                 quality="high",
             )
 
-            image_data = base64.b64decode(response.data[0].b64_json)
+            image_data = base64.b64decode(edit_response.data[0].b64_json)
             return Image.open(BytesIO(image_data))
 
         except Exception as e:
             print(f"❌ Generation failed: {e}")
             return self._create_fallback_image("")
-        
-    def _download_image(self, url: str) -> bytes:
-        """Download image from URL."""
-        import requests
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
-        return response.content
 
     def compose_meme(self, rose_image: Image.Image, caption: str):
         """Resize to target dimensions."""
@@ -154,7 +139,7 @@ Return ONLY the scene description (2-3 sentences). No preamble."""
             font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 32)
         except Exception:
             font = ImageFont.load_default()
-        draw.text((50, 600), "OG Rose Meme", font=font, fill=(255, 200, 220))  # ← moved out
+        draw.text((50, 600), "OG Rose Meme", font=font, fill=(255, 200, 220))
         if caption:
             draw.text((50, 700), caption, font=font, fill=(255, 255, 255))
         img_bytes = BytesIO()
