@@ -64,12 +64,12 @@ app_instance = None
 # Meme generators (initialized in main)
 meme_generators = {}
 
-# Queue and task tracking
-request_queue: dict[int, int] = {}  # {user_id: queue_position}
-active_tasks: set[int] = set()      # {user_ids with active tasks}
-queue_lock = asyncio.Lock()         # Thread-safe lock
-queue_counter = 0                   # Position counter
-max_concurrent_tasks = 4            # Max tasks running simultaneously
+# Queue and task tracking — initialized in main() inside the event loop
+request_queue: dict[int, int] = {}   # {user_id: queue_position}
+active_tasks: set[int] = set()       # {user_ids with active tasks}
+queue_lock: asyncio.Lock = None      # Created inside event loop in main()
+queue_counter = 0                    # Increments per request
+max_concurrent_tasks = 4             # Max tasks running simultaneously
 
 
 # ── Render health check server ─────────────────────────────────────────────────
@@ -91,66 +91,48 @@ def start_health_server():
     server.serve_forever()
 
 
-# ── Graceful shutdown ──────────────────────────────────────────────────────────
-
-def signal_handler(sig, frame):
-    """Handle shutdown signals gracefully"""
-    logger.info("🛑 Received shutdown signal, closing gracefully...")
-    if app_instance:
-        app_instance.stop()
-    executor.shutdown(wait=False)
-    logger.info("✅ Bot shut down cleanly")
-    sys.exit(0)
-
-
 # ── Queue Management ───────────────────────────────────────────────────────────
 
 async def add_to_queue(user_id: int) -> int:
-    """Add user to queue and return their position"""
+    """Add user to queue and return their actual position among pending requests."""
     global queue_counter
     async with queue_lock:
         queue_counter += 1
-        position = queue_counter
-        request_queue[user_id] = position
-        logger.info(f"User {user_id} added to queue at position {position}")
+        request_queue[user_id] = queue_counter
+        # Real position = how many entries are in the queue right now
+        position = len(request_queue)
+        logger.info(f"User {user_id} added to queue, position {position}")
         logger.info(f"Queue state: {request_queue}, Active tasks: {active_tasks}")
         return position
 
 
-async def get_queue_position(user_id: int) -> int:
-    """Get current position in queue"""
-    async with queue_lock:
-        return request_queue.get(user_id, 0)
-
-
 async def wait_for_task_slot() -> None:
-    """Wait until there's a free task slot"""
+    """Wait until there's a free task slot."""
     while True:
         async with queue_lock:
             if len(active_tasks) < max_concurrent_tasks:
                 return
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.5)
 
 
 async def start_task(user_id: int) -> None:
-    """Mark a task as active"""
+    """Mark a task as active."""
     async with queue_lock:
         active_tasks.add(user_id)
         logger.info(f"Task started for user {user_id}. Active tasks: {len(active_tasks)}")
 
 
 async def complete_task(user_id: int) -> None:
-    """Mark a task as complete and update queue"""
+    """Mark a task as complete and remove from queue."""
     async with queue_lock:
         active_tasks.discard(user_id)
-        if user_id in request_queue:
-            del request_queue[user_id]
+        request_queue.pop(user_id, None)
         logger.info(f"Task completed for user {user_id}. Active tasks: {len(active_tasks)}")
         logger.info(f"Queue state: {request_queue}, Active tasks: {active_tasks}")
 
 
 def get_queue_stats() -> tuple[int, int]:
-    """Get current queue and active task counts (non-blocking read)"""
+    """Get current queue size and active task count (non-blocking snapshot)."""
     return len(request_queue), len(active_tasks)
 
 
@@ -168,6 +150,8 @@ async def delete_message_quietly(message) -> None:
         await message.delete()
     except BadRequest:
         pass
+    except Exception as e:
+        logger.warning(f"Could not delete message: {e}")
 
 
 async def run_in_executor(func, *args):
@@ -179,13 +163,14 @@ async def run_in_executor(func, *args):
 
 def generate_caption(prompt: str) -> str:
     """Return user-specified caption, generated caption, or empty string for no caption."""
-    # Check for explicit NO CAPTION option: "NOCAPTION" or "NO_CAPTION"
     upper = prompt.upper()
+
+    # Explicit no-caption request
     if "NOCAPTION" in upper or "NO_CAPTION" in upper or "NO CAPTION" in upper:
         logger.info("User requested no caption")
-        return ""  # Return empty string = no caption
-    
-    # Check for explicit caption override: "CAPTION: <text>"
+        return ""
+
+    # Explicit caption override
     if "CAPTION:" in upper:
         idx = upper.index("CAPTION:") + len("CAPTION:")
         caption = prompt[idx:].strip()
@@ -193,8 +178,8 @@ def generate_caption(prompt: str) -> str:
             caption = caption.replace('\\n', '\n')
             logger.info(f"Using user-supplied caption: {caption!r}")
             return caption
-    
-    # No caption provided — generate one with Claude
+
+    # Generate caption with Claude
     system_prompt = """You are a meme caption generator for Rose, a confident, sassy female character.
 
 Rose characteristics:
@@ -238,7 +223,7 @@ Choose your Rose style!
 `/meme <prompt>` - Vintage pinup Rose (retro 1950s)
 `/ogmeme <prompt>` - Original bot Rose (colorful modern)
 
-**Caption Options:**
+*Caption Options:*
 • Auto caption: Just your prompt
 • Custom caption: Add `CAPTION: Your text`
 • No caption: Add `NOCAPTION`
@@ -254,17 +239,17 @@ Each meme is unique!
 
 
 async def meme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /meme command - vintage pinup Rose"""
+    """Handle /meme command - vintage pinup Rose."""
     await _handle_meme_request(update, context, style='vintage')
 
 
 async def ogmeme_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /ogmeme command - original bot Rose"""
+    """Handle /ogmeme command - original bot Rose."""
     await _handle_meme_request(update, context, style='og')
 
 
 async def _handle_meme_request(update: Update, context: ContextTypes.DEFAULT_TYPE, style: str) -> None:
-    """Shared handler logic for both /meme and /ogmeme commands"""
+    """Shared handler logic for both /meme and /ogmeme commands."""
     user = update.effective_user
     user_id = user.id
 
@@ -281,8 +266,9 @@ async def _handle_meme_request(update: Update, context: ContextTypes.DEFAULT_TYP
     # Check prompt was provided
     prompt = " ".join(context.args).strip()
     if not prompt:
+        cmd = "meme" if style == "vintage" else "ogmeme"
         usage_msg = await update.message.reply_text(
-            f"❓ Please provide a prompt!\nExample: `/{'' if style == 'vintage' else 'og'}meme Rose at the gym`",
+            f"❓ Please provide a prompt!\nExample: `/{cmd} Rose at the gym`",
             parse_mode='Markdown'
         )
         await asyncio.sleep(5)
@@ -294,12 +280,12 @@ async def _handle_meme_request(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # Add to queue and get position
     queue_position = await add_to_queue(user_id)
-    queue_size, active_count = get_queue_stats()
+    _, active_count = get_queue_stats()
 
-    # Tell user their queue position
-    if queue_position == 1 and active_count == 0:
+    # Inform user of their position
+    if queue_position == 1 and active_count <= 1:
         queue_msg = await update.message.reply_text(
-            f"⏳ Your meme is generating now...\n\n🌹 You're up!"
+            "⏳ Your meme is generating now...\n\n🌹 You're up!"
         )
     else:
         est_wait = (queue_position - 1) * 30
@@ -311,23 +297,19 @@ async def _handle_meme_request(update: Update, context: ContextTypes.DEFAULT_TYP
             f"⏳ Estimated wait: ~{est_wait}s"
         )
 
-    # Wait for a free task slot
+    # Wait for a free slot then kick off generation
     await wait_for_task_slot()
-
-    # Mark task as active
     await start_task(user_id)
 
-    # Process in background (non-blocking)
     asyncio.create_task(
         process_meme_generation(user, prompt, queue_msg, style)
     )
 
 
 async def process_meme_generation(user, prompt: str, status_msg, style: str) -> None:
-    """Process meme generation in background without blocking other commands"""
+    """Process meme generation in background without blocking other commands."""
     user_id = user.id
-    
-    # Get the right generator
+
     generator = meme_generators.get(style)
     if not generator:
         logger.error(f"No generator found for style: {style}")
@@ -335,7 +317,7 @@ async def process_meme_generation(user, prompt: str, status_msg, style: str) -> 
         await status_msg.reply_text("❌ Error: Meme style not available")
         await complete_task(user_id)
         return
-    
+
     try:
         async def generate():
             caption = await run_in_executor(generate_caption, prompt)
@@ -351,11 +333,11 @@ async def process_meme_generation(user, prompt: str, status_msg, style: str) -> 
 
         await delete_message_quietly(status_msg)
 
-        # Send image
         try:
             await status_msg.chat.send_photo(
                 photo=meme_image,
-                caption=f"🌹 *{user.first_name}'s Rose Meme* 🌹"
+                caption=f"🌹 *{user.first_name}'s Rose Meme* 🌹",
+                parse_mode='Markdown'
             )
         except Exception as e:
             logger.error(f"Error sending photo: {e}")
@@ -371,7 +353,7 @@ async def process_meme_generation(user, prompt: str, status_msg, style: str) -> 
         await delete_message_quietly(error_msg)
 
     except Exception as e:
-        logger.error(f"Error generating meme for {user.first_name}: {e}")
+        logger.error(f"Error generating meme for {user.first_name}: {e}", exc_info=True)
         await delete_message_quietly(status_msg)
         error_msg = await status_msg.reply_text(
             f"❌ Something went wrong generating your meme: {str(e)[:50]}"
@@ -380,7 +362,6 @@ async def process_meme_generation(user, prompt: str, status_msg, style: str) -> 
         await delete_message_quietly(error_msg)
 
     finally:
-        # Always mark task complete to close the loop
         await complete_task(user_id)
         logger.info(f"[{user.first_name}] Task marked complete, queue updated")
 
@@ -388,16 +369,16 @@ async def process_meme_generation(user, prompt: str, status_msg, style: str) -> 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     help_text = """🌹 *Rose AI Meme Generator Help* 🌹
 
-**Two Rose Styles:**
+*Two Rose Styles:*
 • `/meme <prompt>` → Vintage pinup Rose (retro 1950s style)
 • `/ogmeme <prompt>` → Original bot Rose (colorful modern style)
 
-**Caption Control:**
+*Caption Control:*
 • No args: Claude generates funny caption
 • `CAPTION: text` → Your custom caption
 • `NOCAPTION` → No caption at all
 
-**Examples:**
+*Examples:*
 • `/meme Rose as a CEO`
 • `/meme Rose at beach CAPTION: Sun & Sass`
 • `/ogmeme Rose party NOCAPTION`
@@ -409,19 +390,18 @@ Each meme is unique with dynamically placed text!
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.error(f"Error: {context.error}")
+    logger.error(f"Unhandled error: {context.error}", exc_info=context.error)
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 def main():
-    global app_instance, meme_generators
-    
-    # Register signal handlers for graceful shutdown
-    signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGINT, signal_handler)
-    
-    # Start health check server in background
+    global app_instance, meme_generators, queue_lock
+
+    # Create queue lock here so it's tied to the correct event loop
+    queue_lock = asyncio.Lock()
+
+    # Start health check server in background thread
     health_thread = threading.Thread(target=start_health_server, daemon=True)
     health_thread.start()
 
@@ -435,7 +415,7 @@ def main():
         }
         logger.info("✅ Both Rose generators initialized")
     except Exception as e:
-        logger.error(f"❌ Failed to initialize generators: {e}")
+        logger.error(f"❌ Failed to initialize generators: {e}", exc_info=True)
         sys.exit(1)
 
     app_instance = Application.builder().token(TELEGRAM_TOKEN).build()
@@ -447,7 +427,16 @@ def main():
     app_instance.add_error_handler(error_handler)
 
     logger.info("🌹 Rose AI Meme Bot started (vintage + OG styles, queue system enabled)!")
-    app_instance.run_polling(allowed_updates=Update.ALL_TYPES)
+
+    # Let PTB handle SIGTERM/SIGINT cleanly — no manual signal.signal() needed
+    app_instance.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        stop_signals=[signal.SIGTERM, signal.SIGINT],
+    )
+
+    # Clean up thread pool after polling stops
+    executor.shutdown(wait=False)
+    logger.info("✅ Bot shut down cleanly")
 
 
 if __name__ == '__main__':
