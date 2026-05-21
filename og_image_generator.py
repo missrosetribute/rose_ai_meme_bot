@@ -1,7 +1,7 @@
 """
 Dynamic Image Generator - Original Rose Cartoon Style
 Uses gpt-image-1 EDIT mode with og_rose_avatar_alt.png as base reference.
-Matches the same pattern as image_generator.py (vintage style).
+Matches the same process as image_generator.py
 """
 
 import anthropic
